@@ -118,25 +118,19 @@ func TestDMXOutputQuery(t *testing.T) {
 
 	client := graphql.NewClient("")
 
+	// dmxOutput returns [Int!]! - a flat array of 512 channel values
 	var resp struct {
-		DMXOutput struct {
-			Universe int   `json:"universe"`
-			Channels []int `json:"channels"`
-		} `json:"dmxOutput"`
+		DMXOutput []int `json:"dmxOutput"`
 	}
 
 	err := client.Query(ctx, `
 		query {
-			dmxOutput(universe: 0) {
-				universe
-				channels
-			}
+			dmxOutput(universe: 0)
 		}
 	`, nil, &resp)
 
 	require.NoError(t, err)
-	assert.Equal(t, 0, resp.DMXOutput.Universe)
-	assert.Len(t, resp.DMXOutput.Channels, 512, "DMX universe should have 512 channels")
+	assert.Len(t, resp.DMXOutput, 512, "DMX universe should have 512 channels")
 }
 
 func TestCreateAndDeleteProject(t *testing.T) {
@@ -192,38 +186,32 @@ func TestCreateAndDeleteProject(t *testing.T) {
 	assert.True(t, deleteResp.DeleteProject)
 }
 
-func TestFixtureInventoryQuery(t *testing.T) {
+func TestFixtureDefinitionsQuery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	client := graphql.NewClient("")
 
 	var resp struct {
-		FixtureInventory struct {
-			FixtureTypes []string `json:"fixtureTypes"`
-			Definitions  []struct {
-				ID           string `json:"id"`
-				Manufacturer string `json:"manufacturer"`
-				Model        string `json:"model"`
-				Type         string `json:"type"`
-			} `json:"definitions"`
-		} `json:"fixtureInventory"`
+		FixtureDefinitions []struct {
+			ID           string `json:"id"`
+			Manufacturer string `json:"manufacturer"`
+			Model        string `json:"model"`
+			Type         string `json:"type"`
+		} `json:"fixtureDefinitions"`
 	}
 
 	err := client.Query(ctx, `
 		query {
-			fixtureInventory {
-				fixtureTypes
-				definitions {
-					id
-					manufacturer
-					model
-					type
-				}
+			fixtureDefinitions {
+				id
+				manufacturer
+				model
+				type
 			}
 		}
 	`, nil, &resp)
 
 	require.NoError(t, err)
-	assert.NotNil(t, resp.FixtureInventory.FixtureTypes)
+	assert.NotNil(t, resp.FixtureDefinitions)
 }
