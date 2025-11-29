@@ -123,9 +123,10 @@ func TestDMXOutputQuery(t *testing.T) {
 		DMXOutput []int `json:"dmxOutput"`
 	}
 
+	// DMX universes are 1-indexed (standard convention: 1-4, not 0-3)
 	err := client.Query(ctx, `
 		query {
-			dmxOutput(universe: 0)
+			dmxOutput(universe: 1)
 		}
 	`, nil, &resp)
 
