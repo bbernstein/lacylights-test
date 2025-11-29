@@ -53,14 +53,15 @@ func TestDMXOutputMatchesQuery(t *testing.T) {
 
 	client := graphql.NewClient("")
 
-	// Query DMX output for universe 0 - returns [Int!]! (512 channel values)
+	// Query DMX output for universe 1 - returns [Int!]! (512 channel values)
+	// DMX universes are 1-indexed (standard convention: 1-4, not 0-3)
 	var resp struct {
 		DMXOutput []int `json:"dmxOutput"`
 	}
 
 	err := client.Query(ctx, `
 		query {
-			dmxOutput(universe: 0)
+			dmxOutput(universe: 1)
 		}
 	`, nil, &resp)
 
@@ -81,9 +82,10 @@ func TestSetChannelValue(t *testing.T) {
 		SetChannelValue bool `json:"setChannelValue"`
 	}
 
+	// DMX universes are 1-indexed (standard convention: 1-4, not 0-3)
 	err := client.Mutate(ctx, `
 		mutation SetChannel {
-			setChannelValue(universe: 0, channel: 1, value: 128)
+			setChannelValue(universe: 1, channel: 1, value: 128)
 		}
 	`, nil, &setResp)
 
@@ -96,7 +98,7 @@ func TestSetChannelValue(t *testing.T) {
 	}
 
 	err = client.Query(ctx, `
-		query { dmxOutput(universe: 0) }
+		query { dmxOutput(universe: 1) }
 	`, nil, &dmxResp)
 	require.NoError(t, err)
 	assert.Equal(t, 128, dmxResp.DMXOutput[0])
@@ -104,7 +106,7 @@ func TestSetChannelValue(t *testing.T) {
 	// Reset the channel
 	err = client.Mutate(ctx, `
 		mutation ResetChannel {
-			setChannelValue(universe: 0, channel: 1, value: 0)
+			setChannelValue(universe: 1, channel: 1, value: 0)
 		}
 	`, nil, &setResp)
 
@@ -112,7 +114,7 @@ func TestSetChannelValue(t *testing.T) {
 
 	// Verify reset
 	err = client.Query(ctx, `
-		query { dmxOutput(universe: 0) }
+		query { dmxOutput(universe: 1) }
 	`, nil, &dmxResp)
 	require.NoError(t, err)
 	assert.Equal(t, 0, dmxResp.DMXOutput[0])
@@ -127,6 +129,7 @@ func TestSetMultipleChannels(t *testing.T) {
 	client := graphql.NewClient("")
 
 	// Set multiple channels using individual calls
+	// DMX universes are 1-indexed (standard convention: 1-4, not 0-3)
 	var setResp struct {
 		C1 bool `json:"c1"`
 		C2 bool `json:"c2"`
@@ -135,9 +138,9 @@ func TestSetMultipleChannels(t *testing.T) {
 
 	err := client.Mutate(ctx, `
 		mutation SetMultiple {
-			c1: setChannelValue(universe: 0, channel: 1, value: 100)
-			c2: setChannelValue(universe: 0, channel: 2, value: 150)
-			c3: setChannelValue(universe: 0, channel: 3, value: 200)
+			c1: setChannelValue(universe: 1, channel: 1, value: 100)
+			c2: setChannelValue(universe: 1, channel: 2, value: 150)
+			c3: setChannelValue(universe: 1, channel: 3, value: 200)
 		}
 	`, nil, &setResp)
 
@@ -152,7 +155,7 @@ func TestSetMultipleChannels(t *testing.T) {
 	}
 
 	err = client.Query(ctx, `
-		query { dmxOutput(universe: 0) }
+		query { dmxOutput(universe: 1) }
 	`, nil, &dmxResp)
 	require.NoError(t, err)
 	assert.Equal(t, 100, dmxResp.DMXOutput[0])
@@ -162,9 +165,9 @@ func TestSetMultipleChannels(t *testing.T) {
 	// Reset the channels
 	err = client.Mutate(ctx, `
 		mutation ResetMultiple {
-			c1: setChannelValue(universe: 0, channel: 1, value: 0)
-			c2: setChannelValue(universe: 0, channel: 2, value: 0)
-			c3: setChannelValue(universe: 0, channel: 3, value: 0)
+			c1: setChannelValue(universe: 1, channel: 1, value: 0)
+			c2: setChannelValue(universe: 1, channel: 2, value: 0)
+			c3: setChannelValue(universe: 1, channel: 3, value: 0)
 		}
 	`, nil, nil)
 
@@ -180,13 +183,14 @@ func TestBlackout(t *testing.T) {
 	client := graphql.NewClient("")
 
 	// First set some values
+	// DMX universes are 1-indexed (standard convention: 1-4, not 0-3)
 	var setResp struct {
 		SetChannelValue bool `json:"setChannelValue"`
 	}
 
 	err := client.Mutate(ctx, `
 		mutation SetChannel {
-			setChannelValue(universe: 0, channel: 1, value: 255)
+			setChannelValue(universe: 1, channel: 1, value: 255)
 		}
 	`, nil, &setResp)
 
@@ -199,7 +203,7 @@ func TestBlackout(t *testing.T) {
 	}
 
 	err = client.Query(ctx, `
-		query { dmxOutput(universe: 0) }
+		query { dmxOutput(universe: 1) }
 	`, nil, &dmxResp)
 	require.NoError(t, err)
 	assert.Equal(t, 255, dmxResp.DMXOutput[0])
@@ -218,6 +222,9 @@ func TestBlackout(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, fadeToBlackResp.FadeToBlack)
 
+	// Wait for fade engine to process (runs at 40Hz = 25ms interval)
+	time.Sleep(100 * time.Millisecond)
+
 	// Verify channels are zero
 	var queryResp struct {
 		DMXOutput []int `json:"dmxOutput"`
@@ -225,7 +232,7 @@ func TestBlackout(t *testing.T) {
 
 	err = client.Query(ctx, `
 		query {
-			dmxOutput(universe: 0)
+			dmxOutput(universe: 1)
 		}
 	`, nil, &queryResp)
 
@@ -256,13 +263,14 @@ func TestArtNetCaptureDuringChannelChange(t *testing.T) {
 	receiver.ClearFrames()
 
 	// Set a distinctive value
+	// DMX universes are 1-indexed (standard convention: 1-4, not 0-3)
 	var setResp struct {
 		SetChannelValue bool `json:"setChannelValue"`
 	}
 
 	err = client.Mutate(ctx, `
 		mutation SetChannel {
-			setChannelValue(universe: 0, channel: 10, value: 177)
+			setChannelValue(universe: 1, channel: 10, value: 177)
 		}
 	`, nil, &setResp)
 
@@ -275,7 +283,7 @@ func TestArtNetCaptureDuringChannelChange(t *testing.T) {
 	}
 
 	err = client.Query(ctx, `
-		query { dmxOutput(universe: 0) }
+		query { dmxOutput(universe: 1) }
 	`, nil, &dmxResp)
 	require.NoError(t, err)
 	assert.Equal(t, 177, dmxResp.DMXOutput[9])
@@ -290,6 +298,7 @@ func TestArtNetCaptureDuringChannelChange(t *testing.T) {
 	}
 
 	// Find a frame with our value
+	// Note: Art-Net uses 0-indexed universe numbers in the protocol
 	found := false
 	for _, frame := range frames {
 		if frame.Universe == 0 && frame.Channels[9] == 177 {
@@ -303,7 +312,7 @@ func TestArtNetCaptureDuringChannelChange(t *testing.T) {
 	// Clean up
 	_ = client.Mutate(ctx, `
 		mutation ResetChannel {
-			setChannelValue(universe: 0, channel: 10, value: 0)
+			setChannelValue(universe: 1, channel: 10, value: 0)
 		}
 	`, nil, nil)
 }
