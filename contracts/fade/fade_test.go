@@ -611,27 +611,30 @@ func TestCueListFadeTransitions(t *testing.T) {
 	cueListID := cueListResp.CreateCueList.ID
 
 	// Add cues with specific fade times
+	// Go server uses CreateCueInput and createCue mutation
 	for i, sceneID := range []string{scene1ID, scene2ID, scene3ID} {
 		err := setup.client.Mutate(ctx, `
-			mutation AddCue($input: AddCueInput!) {
-				addCueToList(input: $input) { id }
+			mutation CreateCue($input: CreateCueInput!) {
+				createCue(input: $input) { id }
 			}
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
-				"cueListId":  cueListID,
-				"name":       "Cue " + string(rune('1'+i)),
-				"cueNumber":  float64(i + 1),
-				"sceneId":    sceneID,
-				"fadeInTime": 1.0,
+				"cueListId":   cueListID,
+				"name":        "Cue " + string(rune('1'+i)),
+				"cueNumber":   float64(i + 1),
+				"sceneId":     sceneID,
+				"fadeInTime":  1.0,
+				"fadeOutTime": 1.0,
 			},
 		}, nil)
 		require.NoError(t, err)
 	}
 
 	// Start cue list
+	// Go server returns Boolean! from startCueList, not an object
 	err = setup.client.Mutate(ctx, `
 		mutation StartCueList($cueListId: ID!) {
-			startCueList(cueListId: $cueListId) { id }
+			startCueList(cueListId: $cueListId)
 		}
 	`, map[string]interface{}{"cueListId": cueListID}, nil)
 	require.NoError(t, err)
@@ -642,7 +645,12 @@ func TestCueListFadeTransitions(t *testing.T) {
 	assert.InDelta(t, 255, output[0], 5, "Should be at scene 1 (red)")
 
 	// Go to next cue
-	err = setup.client.Mutate(ctx, `mutation { nextCue { id } }`, nil, nil)
+	// Go server requires cueListId parameter and returns Boolean!
+	err = setup.client.Mutate(ctx, `
+		mutation NextCue($cueListId: ID!) {
+			nextCue(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
 	require.NoError(t, err)
 
 	// Wait for transition
@@ -651,7 +659,12 @@ func TestCueListFadeTransitions(t *testing.T) {
 	assert.InDelta(t, 255, output[1], 5, "Should be at scene 2 (green)")
 
 	// Stop cue list
-	err = setup.client.Mutate(ctx, `mutation { stopCueList }`, nil, nil)
+	// Go server requires cueListId parameter and returns Boolean!
+	err = setup.client.Mutate(ctx, `
+		mutation StopCueList($cueListId: ID!) {
+			stopCueList(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
 	require.NoError(t, err)
 }
 
@@ -686,17 +699,19 @@ func TestCueFadeTimeOverride(t *testing.T) {
 	cueListID := cueListResp.CreateCueList.ID
 
 	// Add cue with 5-second fade
+	// Go server uses CreateCueInput and createCue mutation
 	err = setup.client.Mutate(ctx, `
-		mutation AddCue($input: AddCueInput!) {
-			addCueToList(input: $input) { id }
+		mutation CreateCue($input: CreateCueInput!) {
+			createCue(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
-			"cueListId":  cueListID,
-			"name":       "Slow Cue",
-			"cueNumber":  1.0,
-			"sceneId":    sceneID,
-			"fadeInTime": 5.0,
+			"cueListId":   cueListID,
+			"name":        "Slow Cue",
+			"cueNumber":   1.0,
+			"sceneId":     sceneID,
+			"fadeInTime":  5.0,
+			"fadeOutTime": 1.0,
 		},
 	}, nil)
 	require.NoError(t, err)
@@ -706,9 +721,10 @@ func TestCueFadeTimeOverride(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Start cue list with override fade time
+	// Go server returns Boolean! from startCueList, not an object
 	err = setup.client.Mutate(ctx, `
 		mutation StartCueList($cueListId: ID!, $fadeInTime: Float) {
-			startCueList(cueListId: $cueListId, fadeInTime: $fadeInTime) { id }
+			startCueList(cueListId: $cueListId, fadeInTime: $fadeInTime)
 		}
 	`, map[string]interface{}{
 		"cueListId":  cueListID,
@@ -722,7 +738,12 @@ func TestCueFadeTimeOverride(t *testing.T) {
 	assert.InDelta(t, 255, output[0], 10, "Should be at full with override fade time")
 
 	// Stop cue list
-	_ = setup.client.Mutate(ctx, `mutation { stopCueList }`, nil, nil)
+	// Go server requires cueListId parameter
+	_ = setup.client.Mutate(ctx, `
+		mutation StopCueList($cueListId: ID!) {
+			stopCueList(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
 }
 
 // ============================================================================
@@ -764,9 +785,10 @@ func TestPreviewModeFadeDoesNotAffectLive(t *testing.T) {
 	sessionID := sessionResp.StartPreviewSession.ID
 
 	// Preview a different scene
+	// Go server uses initializePreviewWithScene instead of previewScene
 	err = setup.client.Mutate(ctx, `
-		mutation PreviewScene($sessionId: ID!, $sceneId: ID!) {
-			previewScene(sessionId: $sessionId, sceneId: $sceneId) { id }
+		mutation InitializePreview($sessionId: ID!, $sceneId: ID!) {
+			initializePreviewWithScene(sessionId: $sessionId, sceneId: $sceneId)
 		}
 	`, map[string]interface{}{
 		"sessionId": sessionID,
@@ -821,9 +843,10 @@ func TestPreviewSessionOutputValues(t *testing.T) {
 	sessionID := sessionResp.StartPreviewSession.ID
 
 	// Preview the scene
+	// Go server uses initializePreviewWithScene instead of previewScene
 	err = setup.client.Mutate(ctx, `
-		mutation PreviewScene($sessionId: ID!, $sceneId: ID!) {
-			previewScene(sessionId: $sessionId, sceneId: $sceneId) { id }
+		mutation InitializePreview($sessionId: ID!, $sceneId: ID!) {
+			initializePreviewWithScene(sessionId: $sessionId, sceneId: $sceneId)
 		}
 	`, map[string]interface{}{
 		"sessionId": sessionID,
@@ -1133,29 +1156,33 @@ func TestEasingTypes(t *testing.T) {
 	require.NoError(t, err)
 	cueListID := cueListResp.CreateCueList.ID
 
-	easingTypes := []string{"LINEAR", "CUBIC", "SINE"}
+	// Go server uses these easing type names:
+	// LINEAR, EASE_IN_OUT_CUBIC, EASE_IN_OUT_SINE, EASE_OUT_EXPONENTIAL, BEZIER, S_CURVE
+	easingTypes := []string{"LINEAR", "EASE_IN_OUT_CUBIC", "EASE_IN_OUT_SINE"}
 	midpointValues := make(map[string]int)
 
 	for i, easing := range easingTypes {
 		// Add cue with specific easing
+		// Go server uses CreateCueInput and createCue mutation
 		var cueResp struct {
-			AddCueToList struct {
+			CreateCue struct {
 				ID string `json:"id"`
-			} `json:"addCueToList"`
+			} `json:"createCue"`
 		}
 
 		err := setup.client.Mutate(ctx, `
-			mutation AddCue($input: AddCueInput!) {
-				addCueToList(input: $input) { id }
+			mutation CreateCue($input: CreateCueInput!) {
+				createCue(input: $input) { id }
 			}
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
-				"cueListId":  cueListID,
-				"name":       easing + " Cue",
-				"cueNumber":  float64(i + 1),
-				"sceneId":    sceneID,
-				"fadeInTime": 2.0,
-				"easingType": easing,
+				"cueListId":   cueListID,
+				"name":        easing + " Cue",
+				"cueNumber":   float64(i + 1),
+				"sceneId":     sceneID,
+				"fadeInTime":  2.0,
+				"fadeOutTime": 1.0,
+				"easingType":  easing,
 			},
 		}, &cueResp)
 		if err != nil {
@@ -1168,13 +1195,14 @@ func TestEasingTypes(t *testing.T) {
 		time.Sleep(200 * time.Millisecond)
 
 		// Start cue list from this cue
+		// Go server uses startFromCue: Int (not Float) and returns Boolean!
 		err = setup.client.Mutate(ctx, `
-			mutation StartCueList($cueListId: ID!, $startFromCue: Float) {
-				startCueList(cueListId: $cueListId, startFromCue: $startFromCue) { id }
+			mutation StartCueList($cueListId: ID!, $startFromCue: Int) {
+				startCueList(cueListId: $cueListId, startFromCue: $startFromCue)
 			}
 		`, map[string]interface{}{
 			"cueListId":    cueListID,
-			"startFromCue": float64(i + 1),
+			"startFromCue": i + 1,
 		}, nil)
 		require.NoError(t, err)
 
@@ -1185,7 +1213,12 @@ func TestEasingTypes(t *testing.T) {
 		t.Logf("Easing %s midpoint value: %d", easing, output[0])
 
 		// Stop and wait
-		_ = setup.client.Mutate(ctx, `mutation { stopCueList }`, nil, nil)
+		// Go server requires cueListId parameter
+		_ = setup.client.Mutate(ctx, `
+			mutation StopCueList($cueListId: ID!) {
+				stopCueList(cueListId: $cueListId)
+			}
+		`, map[string]interface{}{"cueListId": cueListID}, nil)
 		time.Sleep(500 * time.Millisecond)
 	}
 
