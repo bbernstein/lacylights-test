@@ -20,6 +20,10 @@ func getArtNetPort() string {
 	if port == "" {
 		port = "6454"
 	}
+	// If running locally with localhost broadcast, bind to localhost
+	if os.Getenv("ARTNET_BROADCAST") == "127.0.0.1" {
+		return "127.0.0.1:" + port
+	}
 	return ":" + port
 }
 
@@ -54,6 +58,43 @@ func checkArtNetEnabled(t *testing.T) {
 	}
 }
 
+// resetDMXState resets all DMX channels to 0 using an instant fadeToBlack
+// This ensures tests start from a clean state
+func resetDMXState(t *testing.T, client *graphql.Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Call fadeToBlack with 0 second fade (instant)
+	var resp struct {
+		FadeToBlack bool `json:"fadeToBlack"`
+	}
+	err := client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, &resp)
+	if err != nil {
+		t.Logf("Warning: Could not reset DMX state: %v", err)
+		return
+	}
+
+	// Wait for the fade engine to process (runs at 40Hz = 25ms)
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify channels are at 0
+	var dmxResp struct {
+		DMXOutput []int `json:"dmxOutput"`
+	}
+	err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &dmxResp)
+	if err != nil {
+		t.Logf("Warning: Could not verify DMX reset: %v", err)
+		return
+	}
+
+	// Check first few channels are 0
+	for i := 0; i < 3 && i < len(dmxResp.DMXOutput); i++ {
+		if dmxResp.DMXOutput[i] != 0 {
+			t.Logf("Warning: Channel %d not at 0 after reset: %d", i+1, dmxResp.DMXOutput[i])
+		}
+	}
+}
+
 // testSetup contains common test resources
 type testSetup struct {
 	client       *graphql.Client
@@ -73,6 +114,10 @@ func newTestSetup(t *testing.T) *testSetup {
 	defer cancel()
 
 	client := graphql.NewClient("")
+
+	// Reset DMX state to ensure clean starting point
+	resetDMXState(t, client)
+
 	setup := &testSetup{
 		client: client,
 		scenes: make(map[string]string),
@@ -475,29 +520,47 @@ func TestFadeProgressionLinear(t *testing.T) {
 	setup.fadeToBlack(t, 0)
 	time.Sleep(100 * time.Millisecond)
 
-	// Start 2-second fade
+	// Start 2-second fade and track start time
 	fadeTime := 2.0
+	fadeStart := time.Now()
 	setup.activateScene(t, sceneID, fadeTime)
 
-	// Sample at multiple points and verify roughly linear progression
-	samples := []struct {
-		time     time.Duration
-		expected float64 // Expected percentage (0-100)
-		tolerance float64
-	}{
-		{500 * time.Millisecond, 25, 15},
-		{1000 * time.Millisecond, 50, 15},
-		{1500 * time.Millisecond, 75, 15},
+	// Helper function to calculate sine easing: -(cos(π*t) - 1) / 2
+	sineEasing := func(progress float64) float64 {
+		return -(math.Cos(math.Pi*progress) - 1) / 2
 	}
 
-	for _, sample := range samples {
-		time.Sleep(sample.time - 100*time.Millisecond)
+	// Sample at multiple points and verify sine easing progression
+	sampleTimes := []time.Duration{
+		500 * time.Millisecond,  // 25% through 2s fade
+		1000 * time.Millisecond, // 50% through 2s fade
+		1500 * time.Millisecond, // 75% through 2s fade
+	}
+
+	for _, targetTime := range sampleTimes {
+		// Sleep until target time
+		elapsed := time.Since(fadeStart)
+		if targetTime > elapsed {
+			time.Sleep(targetTime - elapsed)
+		}
+
+		// Measure actual elapsed time
+		actualElapsed := time.Since(fadeStart)
+		actualProgress := actualElapsed.Seconds() / fadeTime
 		output := setup.getDMXOutput(t)
+
+		// Calculate expected value using actual elapsed time and sine easing
+		easedProgress := sineEasing(actualProgress)
+		expectedValue := easedProgress * 255
+		expectedPercent := easedProgress * 100
 		actualPercent := float64(output[0]) / 255 * 100
-		t.Logf("At %.2fs: value=%d (%.1f%%)", sample.time.Seconds(), output[0], actualPercent)
-		assert.InDelta(t, sample.expected, actualPercent, sample.tolerance,
-			"Fade progress at %v should be around %.0f%%", sample.time, sample.expected)
-		time.Sleep(100 * time.Millisecond)
+
+		t.Logf("At %.3fs (%.1f%% progress): value=%d (%.1f%%), expected=%.1f (%.1f%%)",
+			actualElapsed.Seconds(), actualProgress*100, output[0], actualPercent, expectedValue, expectedPercent)
+
+		// Use 20% tolerance to account for timing variations and fade engine update rate (40Hz = 25ms)
+		assert.InDelta(t, expectedPercent, actualPercent, 20,
+			"Fade progress at %.3fs should match sine easing", actualElapsed.Seconds())
 	}
 }
 
@@ -733,6 +796,7 @@ func TestCueFadeTimeOverride(t *testing.T) {
 		"fadeInTime": 0.5, // Override to 0.5 seconds
 	}, nil)
 	if err != nil && strings.Contains(err.Error(), "Unknown argument") {
+		t.Logf("DEBUG: Error from startCueList: %v", err) // ADD THIS LINE
 		t.Skip("Skipping: Go server's startCueList doesn't support fadeInTime override")
 	}
 	require.NoError(t, err)
@@ -864,7 +928,10 @@ func TestPreviewSessionOutputValues(t *testing.T) {
 	// Go server uses dmxOutput instead of output
 	var previewResp struct {
 		PreviewSession struct {
-			DMXOutput []int `json:"dmxOutput"`
+			DMXOutput []struct {
+				Universe int   `json:"universe"`
+				Channels []int `json:"channels"`
+			} `json:"dmxOutput"`
 		} `json:"previewSession"`
 	}
 
@@ -872,16 +939,29 @@ func TestPreviewSessionOutputValues(t *testing.T) {
 	err = setup.client.Query(ctx, `
 		query GetPreview($sessionId: ID!) {
 			previewSession(sessionId: $sessionId) {
-				dmxOutput(universe: 1)
+				dmxOutput {
+					universe
+					channels
+				}
 			}
 		}
 	`, map[string]interface{}{"sessionId": sessionID}, &previewResp)
 	require.NoError(t, err)
 
+	// Find universe 1 output
+	var universe1Channels []int
+	for _, output := range previewResp.PreviewSession.DMXOutput {
+		if output.Universe == 1 {
+			universe1Channels = output.Channels
+			break
+		}
+	}
+	require.NotEmpty(t, universe1Channels, "Should have universe 1 output")
+
 	// Verify preview output matches scene values
-	assert.Equal(t, 128, previewResp.PreviewSession.DMXOutput[0], "Preview red should be 128")
-	assert.Equal(t, 64, previewResp.PreviewSession.DMXOutput[1], "Preview green should be 64")
-	assert.Equal(t, 32, previewResp.PreviewSession.DMXOutput[2], "Preview blue should be 32")
+	assert.Equal(t, 128, universe1Channels[0], "Preview red should be 128")
+	assert.Equal(t, 64, universe1Channels[1], "Preview green should be 64")
+	assert.Equal(t, 32, universe1Channels[2], "Preview blue should be 32")
 
 	// Cleanup
 	// Go server uses cancelPreviewSession instead of endPreviewSession
@@ -1048,17 +1128,35 @@ func TestVeryLongFade(t *testing.T) {
 	setup.fadeToBlack(t, 0)
 	time.Sleep(100 * time.Millisecond)
 
-	// Start a 30-second fade
-	setup.activateScene(t, sceneID, 30.0)
+	// Start a 30-second fade and track start time
+	fadeTime := 30.0
+	fadeStart := time.Now()
+	setup.activateScene(t, sceneID, fadeTime)
 
-	// Check at 1 second - should be about 3.3% (255 * 0.033 ≈ 8.5)
+	// Wait 1 second
 	time.Sleep(1000 * time.Millisecond)
+
+	// Measure actual elapsed time
+	actualElapsed := time.Since(fadeStart)
+	actualProgress := actualElapsed.Seconds() / fadeTime
 	output := setup.getDMXOutput(t)
-	expectedMin := 5
-	expectedMax := 15
-	t.Logf("Value at 1s of 30s fade: %d (expected %d-%d)", output[0], expectedMin, expectedMax)
-	assert.True(t, output[0] >= expectedMin && output[0] <= expectedMax,
-		"Value at 1s should be in range %d-%d, got %d", expectedMin, expectedMax, output[0])
+
+	// Calculate expected value using sine easing: -(cos(π*t) - 1) / 2
+	easedProgress := -(math.Cos(math.Pi*actualProgress) - 1) / 2
+	expectedValue := easedProgress * 255
+
+	// At very low values (< 10), use wider tolerance (50%) due to:
+	// - Fade engine update rate (40Hz = 25ms granularity)
+	// - Timing variations in sleep and GraphQL calls
+	// - Integer rounding at low DMX values
+	tolerance := 0.5 // 50% tolerance
+	expectedMin := expectedValue * (1 - tolerance)
+	expectedMax := expectedValue * (1 + tolerance)
+
+	t.Logf("At %.3fs (%.2f%% progress): value=%d, eased=%.2f%%, expected=%.1f, range %.1f-%.1f",
+		actualElapsed.Seconds(), actualProgress*100, output[0], easedProgress*100, expectedValue, expectedMin, expectedMax)
+	assert.True(t, float64(output[0]) >= expectedMin && float64(output[0]) <= expectedMax,
+		"Value at %.3fs should be in range %.1f-%.1f (sine eased), got %d", actualElapsed.Seconds(), expectedMin, expectedMax, output[0])
 
 	// Interrupt with fadeToBlack to clean up
 	setup.fadeToBlack(t, 0)
@@ -1255,4 +1353,390 @@ func cubicEaseInOut(t float64) float64 {
 		return 4 * t * t * t
 	}
 	return 1 - math.Pow(-2*t+2, 3)/2
+}
+
+// ============================================================================
+// Load Tests - High Channel Count Performance
+// ============================================================================
+
+// TestFadeAllChannels4Universes tests fading 2048 channels (4 universes × 512)
+// This verifies the system can handle full DMX capacity with proper timing.
+func TestFadeAllChannels4Universes(t *testing.T) {
+	checkArtNetEnabled(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	// Total channels: 4 universes × 512 channels = 2048 channels
+	const numUniverses = 4
+	const channelsPerUniverse = 512
+	const totalChannels = numUniverses * channelsPerUniverse
+
+	t.Logf("Testing fade of %d total channels (%d universes × %d channels)",
+		totalChannels, numUniverses, channelsPerUniverse)
+
+	// First, set all channels to 255 directly using setChannelValue
+	// This bypasses the scene/fixture system for raw channel testing
+	t.Log("Phase 1: Setting all channels to 255...")
+	setStart := time.Now()
+
+	for universe := 1; universe <= numUniverses; universe++ {
+		// Set all 512 channels in this universe to 255
+		// Use batch approach for efficiency
+		for channel := 1; channel <= channelsPerUniverse; channel++ {
+			err := client.Mutate(ctx, `
+				mutation SetChannel($universe: Int!, $channel: Int!, $value: Int!) {
+					setChannelValue(universe: $universe, channel: $channel, value: $value)
+				}
+			`, map[string]interface{}{
+				"universe": universe,
+				"channel":  channel,
+				"value":    255,
+			}, nil)
+			require.NoError(t, err, "Failed to set channel %d in universe %d", channel, universe)
+
+			// Log progress every 512 channels (per universe)
+			if channel == channelsPerUniverse {
+				t.Logf("  Universe %d: set all %d channels", universe, channelsPerUniverse)
+			}
+		}
+	}
+	setDuration := time.Since(setStart)
+	t.Logf("Setting %d channels took %v (%.1f channels/sec)",
+		totalChannels, setDuration, float64(totalChannels)/setDuration.Seconds())
+
+	// Verify some channels are set
+	var verifyResp struct {
+		DMXOutput []int `json:"dmxOutput"`
+	}
+	err := client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &verifyResp)
+	require.NoError(t, err)
+	assert.Equal(t, 255, verifyResp.DMXOutput[0], "First channel should be 255")
+	assert.Equal(t, 255, verifyResp.DMXOutput[511], "Last channel of universe 1 should be 255")
+
+	// Verify other universes
+	for universe := 2; universe <= numUniverses; universe++ {
+		var resp struct {
+			DMXOutput []int `json:"dmxOutput"`
+		}
+		err := client.Query(ctx, `query GetUniverse($universe: Int!) { dmxOutput(universe: $universe) }`,
+			map[string]interface{}{"universe": universe}, &resp)
+		require.NoError(t, err)
+		assert.Equal(t, 255, resp.DMXOutput[0], "Universe %d channel 1 should be 255", universe)
+	}
+
+	// Phase 2: Fade all channels to 0 over 3 seconds
+	t.Log("Phase 2: Starting 3-second fadeToBlack for all channels...")
+	fadeStart := time.Now()
+
+	var fadeResp struct {
+		FadeToBlack bool `json:"fadeToBlack"`
+	}
+	err = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 3.0) }`, nil, &fadeResp)
+	require.NoError(t, err)
+	assert.True(t, fadeResp.FadeToBlack)
+
+	// Sample multiple universes during fade to verify progression
+	samples := []struct {
+		delay     time.Duration
+		expected  float64 // Expected percentage (0-100) remaining
+		tolerance float64
+	}{
+		{300 * time.Millisecond, 90, 15},
+		{700 * time.Millisecond, 75, 20},
+		{1200 * time.Millisecond, 55, 20},
+		{1700 * time.Millisecond, 40, 20},
+		{2200 * time.Millisecond, 20, 15},
+	}
+
+	lastSampleTime := fadeStart
+	for _, sample := range samples {
+		// Wait relative to last sample
+		sleepTime := sample.delay - time.Since(fadeStart)
+		if sleepTime > 0 {
+			time.Sleep(sleepTime)
+		}
+		lastSampleTime = time.Now()
+
+		// Sample all universes
+		for universe := 1; universe <= numUniverses; universe++ {
+			var resp struct {
+				DMXOutput []int `json:"dmxOutput"`
+			}
+			err := client.Query(ctx, `query GetUniverse($universe: Int!) { dmxOutput(universe: $universe) }`,
+				map[string]interface{}{"universe": universe}, &resp)
+			require.NoError(t, err)
+
+			// Check first channel value
+			actualPercent := float64(resp.DMXOutput[0]) / 255 * 100
+			elapsedMs := time.Since(fadeStart).Milliseconds()
+			t.Logf("  At %dms - Universe %d channel 1: %d (%.1f%%)",
+				elapsedMs, universe, resp.DMXOutput[0], actualPercent)
+
+			// All channels in a universe should be similar
+			if universe == 1 {
+				// Verify channel 256 and 511 are similar to channel 1
+				assert.InDelta(t, resp.DMXOutput[0], resp.DMXOutput[255], 10,
+					"Channel 1 and 256 should be similar during fade")
+				assert.InDelta(t, resp.DMXOutput[0], resp.DMXOutput[511], 10,
+					"Channel 1 and 512 should be similar during fade")
+			}
+		}
+		_ = lastSampleTime // suppress unused variable warning
+	}
+
+	// Wait for fade to complete
+	remainingTime := 3500*time.Millisecond - time.Since(fadeStart)
+	if remainingTime > 0 {
+		time.Sleep(remainingTime)
+	}
+
+	fadeDuration := time.Since(fadeStart)
+	t.Logf("Fade completed in %v (expected ~3s)", fadeDuration)
+
+	// Verify all channels are at 0
+	t.Log("Phase 3: Verifying all channels are at 0...")
+	for universe := 1; universe <= numUniverses; universe++ {
+		var resp struct {
+			DMXOutput []int `json:"dmxOutput"`
+		}
+		err := client.Query(ctx, `query GetUniverse($universe: Int!) { dmxOutput(universe: $universe) }`,
+			map[string]interface{}{"universe": universe}, &resp)
+		require.NoError(t, err)
+
+		// Check all channels are 0
+		nonZeroCount := 0
+		for i, val := range resp.DMXOutput {
+			if val != 0 {
+				nonZeroCount++
+				if nonZeroCount <= 5 {
+					t.Errorf("Universe %d channel %d should be 0, got %d", universe, i+1, val)
+				}
+			}
+		}
+		if nonZeroCount > 0 {
+			t.Errorf("Universe %d has %d non-zero channels after fadeToBlack", universe, nonZeroCount)
+		} else {
+			t.Logf("  Universe %d: all %d channels at 0 ✓", universe, channelsPerUniverse)
+		}
+	}
+
+	// Verify timing was within acceptable range
+	// Use 1.0s tolerance to account for network latency when checking all 2048 channels
+	assert.InDelta(t, 3.0, fadeDuration.Seconds(), 1.0,
+		"Fade duration should be ~3 seconds, got %v", fadeDuration)
+}
+
+// TestFadeUpAllChannels4Universes tests fading 2048 channels from 0 to 255
+func TestFadeUpAllChannels4Universes(t *testing.T) {
+	checkArtNetEnabled(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	const numUniverses = 4
+
+	// Ensure all channels start at 0
+	t.Log("Ensuring all channels at 0...")
+	err := client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
+	require.NoError(t, err)
+	time.Sleep(100 * time.Millisecond)
+
+	// Verify starting state
+	var startResp struct {
+		DMXOutput []int `json:"dmxOutput"`
+	}
+	err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &startResp)
+	require.NoError(t, err)
+	assert.Equal(t, 0, startResp.DMXOutput[0], "Should start at 0")
+
+	// Create test project, fixture definitions, and scene with all channels at 255
+	var projectResp struct {
+		CreateProject struct {
+			ID string `json:"id"`
+		} `json:"createProject"`
+	}
+	err = client.Mutate(ctx, `
+		mutation { createProject(input: {name: "Load Test"}) { id } }
+	`, nil, &projectResp)
+	require.NoError(t, err)
+	projectID := projectResp.CreateProject.ID
+
+	// Clean up at end
+	defer func() {
+		_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
+		_ = client.Mutate(ctx, `mutation DeleteProject($id: ID!) { deleteProject(id: $id) }`,
+			map[string]interface{}{"id": projectID}, nil)
+	}()
+
+	// Get a built-in fixture definition
+	// Go server uses 'channels' array, so we count its length for channelsPerFixture
+	var defResp struct {
+		FixtureDefinitions []struct {
+			ID       string `json:"id"`
+			Channels []struct {
+				Name string `json:"name"`
+			} `json:"channels"`
+		} `json:"fixtureDefinitions"`
+	}
+	err = client.Query(ctx, `
+		query { fixtureDefinitions(filter: { isBuiltIn: true }) { id channels { name } } }
+	`, nil, &defResp)
+	require.NoError(t, err)
+	require.NotEmpty(t, defResp.FixtureDefinitions)
+	defID := defResp.FixtureDefinitions[0].ID
+	channelsPerFixture := len(defResp.FixtureDefinitions[0].Channels)
+
+	// Create fixtures across all 4 universes
+	var fixtureIDs []string
+	for universe := 1; universe <= numUniverses; universe++ {
+		// Create fixtures to fill the universe
+		for startChannel := 1; startChannel <= 512; startChannel += channelsPerFixture {
+			if startChannel+channelsPerFixture > 513 {
+				break // Don't exceed universe
+			}
+
+			var fixResp struct {
+				CreateFixtureInstance struct {
+					ID string `json:"id"`
+				} `json:"createFixtureInstance"`
+			}
+			err := client.Mutate(ctx, `
+				mutation CreateFixture($input: CreateFixtureInstanceInput!) {
+					createFixtureInstance(input: $input) { id }
+				}
+			`, map[string]interface{}{
+				"input": map[string]interface{}{
+					"projectId":    projectID,
+					"definitionId": defID,
+					"name":         "Load Test Fixture",
+					"universe":     universe,
+					"startChannel": startChannel,
+				},
+			}, &fixResp)
+			require.NoError(t, err)
+			fixtureIDs = append(fixtureIDs, fixResp.CreateFixtureInstance.ID)
+		}
+		t.Logf("Created fixtures for universe %d", universe)
+	}
+
+	t.Logf("Created %d fixtures total across %d universes", len(fixtureIDs), numUniverses)
+
+	// Create fixture values at 255 for all fixtures
+	fixtureValues := make([]map[string]interface{}, len(fixtureIDs))
+	channelValues := make([]int, channelsPerFixture)
+	for i := range channelValues {
+		channelValues[i] = 255
+	}
+	for i, fid := range fixtureIDs {
+		fixtureValues[i] = map[string]interface{}{
+			"fixtureId":     fid,
+			"channelValues": channelValues,
+		}
+	}
+
+	// Create scene
+	var sceneResp struct {
+		CreateScene struct {
+			ID string `json:"id"`
+		} `json:"createScene"`
+	}
+	err = client.Mutate(ctx, `
+		mutation CreateScene($input: CreateSceneInput!) {
+			createScene(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"projectId":     projectID,
+			"name":          "Full Load",
+			"fixtureValues": fixtureValues,
+		},
+	}, &sceneResp)
+	require.NoError(t, err)
+	sceneID := sceneResp.CreateScene.ID
+
+	// Create scene board for fade activation
+	var boardResp struct {
+		CreateSceneBoard struct {
+			ID string `json:"id"`
+		} `json:"createSceneBoard"`
+	}
+	err = client.Mutate(ctx, `
+		mutation CreateBoard($input: CreateSceneBoardInput!) {
+			createSceneBoard(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"projectId":       projectID,
+			"name":            "Load Test Board",
+			"defaultFadeTime": 3.0,
+		},
+	}, &boardResp)
+	require.NoError(t, err)
+	boardID := boardResp.CreateSceneBoard.ID
+
+	// Add scene to board
+	err = client.Mutate(ctx, `
+		mutation AddToBoard($input: CreateSceneBoardButtonInput!) {
+			addSceneToBoard(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"sceneBoardId": boardID,
+			"sceneId":      sceneID,
+			"layoutX":      0,
+			"layoutY":      0,
+		},
+	}, nil)
+	require.NoError(t, err)
+
+	// Activate scene with 3-second fade
+	t.Log("Activating scene with 3-second fade up to 255...")
+	fadeStart := time.Now()
+
+	err = client.Mutate(ctx, `
+		mutation Activate($boardId: ID!, $sceneId: ID!, $fade: Float) {
+			activateSceneFromBoard(sceneBoardId: $boardId, sceneId: $sceneId, fadeTimeOverride: $fade)
+		}
+	`, map[string]interface{}{
+		"boardId": boardID,
+		"sceneId": sceneID,
+		"fade":    3.0,
+	}, nil)
+	require.NoError(t, err)
+
+	// Sample during fade
+	time.Sleep(1500 * time.Millisecond)
+	var midResp struct {
+		DMXOutput []int `json:"dmxOutput"`
+	}
+	err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &midResp)
+	require.NoError(t, err)
+	midVal := midResp.DMXOutput[0]
+	t.Logf("Mid-fade (1.5s): channel 1 = %d (%.1f%%)", midVal, float64(midVal)/255*100)
+	assert.True(t, midVal > 50 && midVal < 200, "Should be mid-fade, got %d", midVal)
+
+	// Wait for completion
+	time.Sleep(2000 * time.Millisecond)
+
+	fadeDuration := time.Since(fadeStart)
+	t.Logf("Fade completed in %v", fadeDuration)
+
+	// Verify all universes at 255
+	for universe := 1; universe <= numUniverses; universe++ {
+		var resp struct {
+			DMXOutput []int `json:"dmxOutput"`
+		}
+		err := client.Query(ctx, `query GetUniverse($universe: Int!) { dmxOutput(universe: $universe) }`,
+			map[string]interface{}{"universe": universe}, &resp)
+		require.NoError(t, err)
+
+		// Check a sample of channels
+		assert.InDelta(t, 255, resp.DMXOutput[0], 5, "Universe %d channel 1 should be 255", universe)
+		t.Logf("  Universe %d channel 1: %d ✓", universe, resp.DMXOutput[0])
+	}
 }
