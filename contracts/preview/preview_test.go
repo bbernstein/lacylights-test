@@ -3,6 +3,7 @@ package preview
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -10,6 +11,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// skipIfNoPreview skips tests when SKIP_PREVIEW_TESTS is set
+func skipIfNoPreview(t *testing.T) {
+	if os.Getenv("SKIP_PREVIEW_TESTS") != "" {
+		t.Skip("Skipping preview test: SKIP_PREVIEW_TESTS is set")
+	}
+}
 
 // testProjectID is created and deleted for each test that needs it
 func createTestProject(t *testing.T, client *graphql.Client) string {
@@ -52,6 +60,8 @@ func deleteTestProject(t *testing.T, client *graphql.Client, projectID string) {
 }
 
 func TestStartPreviewSession(t *testing.T) {
+	skipIfNoPreview(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -64,9 +74,11 @@ func TestStartPreviewSession(t *testing.T) {
 	// Start preview session
 	var startResp struct {
 		StartPreviewSession struct {
-			ID        string `json:"id"`
-			ProjectID string `json:"projectId"`
-			IsActive  bool   `json:"isActive"`
+			ID      string `json:"id"`
+			Project struct {
+				ID string `json:"id"`
+			} `json:"project"`
+			IsActive bool `json:"isActive"`
 		} `json:"startPreviewSession"`
 	}
 
@@ -74,7 +86,9 @@ func TestStartPreviewSession(t *testing.T) {
 		mutation StartPreview($projectId: ID!) {
 			startPreviewSession(projectId: $projectId) {
 				id
-				projectId
+				project {
+					id
+				}
 				isActive
 			}
 		}
@@ -84,7 +98,7 @@ func TestStartPreviewSession(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotEmpty(t, startResp.StartPreviewSession.ID)
-	assert.Equal(t, projectID, startResp.StartPreviewSession.ProjectID)
+	assert.Equal(t, projectID, startResp.StartPreviewSession.Project.ID)
 	assert.True(t, startResp.StartPreviewSession.IsActive)
 
 	// Clean up - cancel the session
@@ -106,6 +120,8 @@ func TestStartPreviewSession(t *testing.T) {
 }
 
 func TestPreviewChannelOverride(t *testing.T) {
+	skipIfNoPreview(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -115,17 +131,32 @@ func TestPreviewChannelOverride(t *testing.T) {
 	projectID := createTestProject(t, client)
 	defer deleteTestProject(t, client, projectID)
 
-	// Create a fixture
-	var fixtureResp struct {
-		CreateFixture struct {
-			ID           string `json:"id"`
-			StartChannel int    `json:"startChannel"`
-		} `json:"createFixture"`
+	// Get a built-in fixture definition first
+	var defResp struct {
+		FixtureDefinitions []struct {
+			ID string `json:"id"`
+		} `json:"fixtureDefinitions"`
 	}
 
-	err := client.Mutate(ctx, `
-		mutation CreateFixture($input: CreateFixtureInput!) {
-			createFixture(input: $input) {
+	err := client.Query(ctx, `
+		query { fixtureDefinitions(filter: { isBuiltIn: true }) { id } }
+	`, nil, &defResp)
+
+	require.NoError(t, err)
+	require.NotEmpty(t, defResp.FixtureDefinitions)
+	definitionID := defResp.FixtureDefinitions[0].ID
+
+	// Create a fixture instance
+	var fixtureResp struct {
+		CreateFixtureInstance struct {
+			ID           string `json:"id"`
+			StartChannel int    `json:"startChannel"`
+		} `json:"createFixtureInstance"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation CreateFixtureInstance($input: CreateFixtureInstanceInput!) {
+			createFixtureInstance(input: $input) {
 				id
 				startChannel
 			}
@@ -133,16 +164,15 @@ func TestPreviewChannelOverride(t *testing.T) {
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId":    projectID,
+			"definitionId": definitionID,
 			"name":         "Test Fixture",
-			"manufacturer": "Generic",
-			"model":        "RGB Par",
 			"universe":     1,
 			"startChannel": 1,
 		},
 	}, &fixtureResp)
 
 	require.NoError(t, err)
-	fixtureID := fixtureResp.CreateFixture.ID
+	fixtureID := fixtureResp.CreateFixtureInstance.ID
 
 	// Start preview session
 	var startResp struct {

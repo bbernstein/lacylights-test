@@ -50,6 +50,9 @@ make test-contracts-compare
 # Run DMX behavior tests (requires Art-Net)
 make test-dmx
 
+# Run fade behavior tests (includes Art-Net capture)
+make test-fade
+
 # Run all tests
 make test
 ```
@@ -60,22 +63,56 @@ make test
 |----------|---------|-------------|
 | `GO_SERVER_URL` | `http://localhost:4001/graphql` | Go server GraphQL endpoint |
 | `NODE_SERVER_URL` | `http://localhost:4000/graphql` | Node server GraphQL endpoint |
-| `ARTNET_LISTEN_PORT` | `6454` | Port to listen for Art-Net packets |
+| `ARTNET_LISTEN_PORT` | `6455` | Port to listen for Art-Net packets (default 6455 for testing) |
+| `ARTNET_BROADCAST` | `127.0.0.1` | Broadcast address for Art-Net (use localhost for testing) |
 | `TEST_TIMEOUT` | `30s` | Default test timeout |
 
-## Test Categories
+> **Note:** Tests use Art-Net port **6455** and localhost broadcast (`127.0.0.1`) by default to avoid conflicts with other Art-Net software running on the standard port 6454.
 
-### API Contract Tests (`contracts/api/`)
+## Test Categories & Coverage
+
+### 1. API Contract Tests (`contracts/api/`)
 Verify that GraphQL queries and mutations return identical responses from both servers.
+- **Coverage**: Basic CRUD for Scenes, Fixtures, CueLists.
+- **Missing**: Complex nested queries, edge case validation.
 
-### DMX Behavior Tests (`contracts/dmx/`)
+### 2. DMX Behavior Tests (`contracts/dmx/`)
 Capture actual Art-Net packets and verify DMX channel values match between servers.
+- **Coverage**: Basic channel output, universe mapping.
 
-### Fade Tests (`contracts/fade/`)
-Test fade curves, timing, and interruption handling.
+### 3. Fade Tests (`contracts/fade/`)
+Comprehensive testing of the fade engine.
+- **Coverage**:
+  - Linear and Sine easing curves
+  - Fade interruption (new scene, blackout)
+  - Cross-fading between scenes
+  - Cue list timing and transitions
+  - Preview mode isolation (ensure preview doesn't affect live output)
+  - Art-Net frame capture verification
+- **Status**: All tests passing. `TestCueFadeTimeOverride` requires server support for `fadeInTime` override (implemented).
 
-### Preview Tests (`contracts/preview/`)
+### 4. Preview Tests (`contracts/preview/`)
 Test preview session creation, channel overrides, commit, and cancel.
+- **Coverage**: Session lifecycle, channel updates.
+- **Missing**: Multi-user preview sessions.
+
+## Areas Needing Coverage
+
+The following areas still need significant test coverage:
+
+1. **Complex Scenarios**:
+   - "Live Busking" (rapid changes)
+   - Long-running stability tests
+   - Network interruption recovery
+
+2. **WebSocket Subscriptions**:
+   - Real-time updates for faders/buttons
+   - Connection stability
+   - Event ordering
+
+3. **System Integration**:
+   - Database migration verification
+   - Import/Export project fidelity
 
 ## Writing New Tests
 
