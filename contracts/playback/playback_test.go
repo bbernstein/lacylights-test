@@ -311,7 +311,7 @@ func TestCueListPlayback(t *testing.T) {
 			}
 
 			err = client.Query(ctx, `
-				query { dmxOutput(universe: 0) }
+				query { dmxOutput(universe: 1) }
 			`, nil, &dmxResp)
 
 			require.NoError(t, err)
@@ -344,7 +344,7 @@ func TestCueListPlayback(t *testing.T) {
 			}
 
 			err = client.Query(ctx, `
-				query { dmxOutput(universe: 0) }
+				query { dmxOutput(universe: 1) }
 			`, nil, &dmxResp)
 
 			require.NoError(t, err)
@@ -380,7 +380,7 @@ func TestCueListPlayback(t *testing.T) {
 			}
 
 			err = client.Query(ctx, `
-				query { dmxOutput(universe: 0) }
+				query { dmxOutput(universe: 1) }
 			`, nil, &dmxResp)
 
 			require.NoError(t, err)
@@ -491,7 +491,7 @@ func TestPlayCue(t *testing.T) {
 		}
 
 		err = client.Query(ctx, `
-			query { dmxOutput(universe: 0) }
+			query { dmxOutput(universe: 1) }
 		`, nil, &dmxResp)
 
 		require.NoError(t, err)
@@ -536,7 +536,7 @@ func TestSetSceneLive(t *testing.T) {
 		}
 
 		err = client.Query(ctx, `
-			query { dmxOutput(universe: 0) }
+			query { dmxOutput(universe: 1) }
 		`, nil, &dmxResp)
 
 		require.NoError(t, err)
@@ -561,7 +561,7 @@ func TestSetSceneLive(t *testing.T) {
 		}
 
 		err = client.Query(ctx, `
-			query { dmxOutput(universe: 0) }
+			query { dmxOutput(universe: 1) }
 		`, nil, &dmxResp)
 
 		require.NoError(t, err)
@@ -668,7 +668,7 @@ func TestStartCueListFromCue(t *testing.T) {
 		}
 
 		err = client.Query(ctx, `
-			query { dmxOutput(universe: 0) }
+			query { dmxOutput(universe: 1) }
 		`, nil, &dmxResp)
 
 		require.NoError(t, err)
@@ -735,7 +735,7 @@ func TestFadeTimeOverride(t *testing.T) {
 		}
 
 		err = client.Query(ctx, `
-			query { dmxOutput(universe: 0) }
+			query { dmxOutput(universe: 1) }
 		`, nil, &dmxResp)
 
 		require.NoError(t, err)

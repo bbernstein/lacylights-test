@@ -222,7 +222,8 @@ func (s *testSetup) createScene(t *testing.T, name string, channelValues []int) 
 	return sceneID
 }
 
-// getDMXOutput gets current DMX output for universe 0
+// getDMXOutput gets current DMX output for universe 1
+// DMX universes are 1-indexed (standard convention: 1-4, not 0-3)
 func (s *testSetup) getDMXOutput(t *testing.T) []int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -231,7 +232,7 @@ func (s *testSetup) getDMXOutput(t *testing.T) []int {
 		DMXOutput []int `json:"dmxOutput"`
 	}
 
-	err := s.client.Query(ctx, `query { dmxOutput(universe: 0) }`, nil, &resp)
+	err := s.client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &resp)
 	require.NoError(t, err)
 	return resp.DMXOutput
 }
@@ -837,10 +838,11 @@ func TestPreviewSessionOutputValues(t *testing.T) {
 		} `json:"previewSession"`
 	}
 
+	// DMX universes are 1-indexed (standard convention: 1-4, not 0-3)
 	err = setup.client.Query(ctx, `
 		query GetPreview($sessionId: ID!) {
 			previewSession(sessionId: $sessionId) {
-				output(universe: 0)
+				output(universe: 1)
 			}
 		}
 	`, map[string]interface{}{"sessionId": sessionID}, &previewResp)
