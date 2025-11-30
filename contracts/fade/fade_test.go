@@ -1337,25 +1337,6 @@ func TestEasingTypes(t *testing.T) {
 }
 
 // ============================================================================
-// Helper for easing calculations (for reference)
-// ============================================================================
-
-func linearEase(t float64) float64 {
-	return t
-}
-
-func sineEaseInOut(t float64) float64 {
-	return -(math.Cos(math.Pi*t) - 1) / 2
-}
-
-func cubicEaseInOut(t float64) float64 {
-	if t < 0.5 {
-		return 4 * t * t * t
-	}
-	return 1 - math.Pow(-2*t+2, 3)/2
-}
-
-// ============================================================================
 // Load Tests - High Channel Count Performance
 // ============================================================================
 
