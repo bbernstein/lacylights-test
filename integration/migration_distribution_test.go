@@ -187,10 +187,6 @@ func TestBinaryExecutable(t *testing.T) {
 	err := os.Chmod(tmpFile, 0755)
 	require.NoError(t, err)
 
-	// Try to run with --version flag (assuming the binary supports this)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	// Note: Actual execution test would need the binary to be properly structured
 	// For now, we just verify it's executable
 	fileInfo, err := os.Stat(tmpFile)
@@ -200,7 +196,6 @@ func TestBinaryExecutable(t *testing.T) {
 	assert.True(t, mode&0111 != 0, "Binary should be executable")
 
 	t.Logf("Binary is executable with mode %s", mode)
-	_ = ctx // Use ctx to avoid unused variable warning
 }
 
 // TestVersionConsistency verifies version in latest.json matches binary version

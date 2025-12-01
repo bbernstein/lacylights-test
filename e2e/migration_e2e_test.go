@@ -271,12 +271,11 @@ func createTestFixtures(t *testing.T, ctx context.Context, client *graphql.Clien
 	t.Helper()
 
 	fixtures := []struct {
-		name  string
-		start int
+		name string
 	}{
-		{"Front PAR 1", 1},
-		{"Front PAR 2", 4},
-		{"Back PAR 1", 7},
+		{"Front PAR 1"},
+		{"Front PAR 2"},
+		{"Back PAR 1"},
 	}
 
 	fixtureIDs := make([]string, 0, len(fixtures))
@@ -326,10 +325,10 @@ func createFixture(t *testing.T, ctx context.Context, client *graphql.Client, pr
 func createTestScenes(t *testing.T, ctx context.Context, client *graphql.Client, projectID string, fixtureIDs []string) []string {
 	t.Helper()
 
-	scenes := []string{"Red Wash", "Blue Wash", "White Wash"}
-	sceneIDs := make([]string, 0, len(scenes))
+	sceneCount := 3
+	sceneIDs := make([]string, 0, sceneCount)
 
-	for range scenes {
+	for i := 0; i < sceneCount; i++ {
 		id := createScene(t, ctx, client, projectID, fixtureIDs)
 		sceneIDs = append(sceneIDs, id)
 	}
