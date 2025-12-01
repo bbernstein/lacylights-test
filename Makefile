@@ -151,7 +151,7 @@ test-migration-e2e:
 test-migration-quick:
 	@echo "Running quick migration tests..."
 	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
-		$(GO) test $(GOFLAGS) -short ./integration/... ./e2e/...
+		$(GO) test $(GOFLAGS) -short -run ".*[Mm]igration.*" ./integration/... ./e2e/...
 
 # =============================================================================
 # ALL TESTS

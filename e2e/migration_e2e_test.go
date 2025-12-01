@@ -13,6 +13,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	defaultNodeServerURL = "http://localhost:4000/graphql"
+	defaultGoServerURL   = "http://localhost:4001/graphql"
+)
+
+// getNodeServerURL returns the Node server URL from environment or default
+func getNodeServerURL() string {
+	url := os.Getenv("NODE_SERVER_URL")
+	if url == "" {
+		url = defaultNodeServerURL
+	}
+	return url
+}
+
+// getGoServerURL returns the Go server URL from environment or default
+func getGoServerURL() string {
+	url := os.Getenv("GO_SERVER_URL")
+	if url == "" {
+		url = defaultGoServerURL
+	}
+	return url
+}
+
 // TestFullMigrationWorkflow simulates a complete migration from Node to Go
 func TestFullMigrationWorkflow(t *testing.T) {
 	if testing.Short() {
@@ -22,8 +45,8 @@ func TestFullMigrationWorkflow(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	t.Log("=== Phase 1: Create data with Node server ===")
 
@@ -90,8 +113,8 @@ func TestRollbackScenario(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	t.Log("=== Phase 1: Start with Go server ===")
 
@@ -133,8 +156,8 @@ func TestDataIntegrityDuringMigration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Create baseline data with Node
 	projectID := createTestProject(t, ctx, nodeClient)
@@ -168,8 +191,8 @@ func TestMigrationPerformance(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Create test project
 	projectID := createTestProject(t, ctx, nodeClient)

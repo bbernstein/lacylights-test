@@ -28,7 +28,7 @@ func TestDatabaseSchemaCompatibility(t *testing.T) {
 	populateTestData(t, dbPath)
 
 	// Start Go server with this database
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Query projects from Go server
 	var resp struct {
@@ -113,8 +113,8 @@ func TestDataPreservation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Create a project with Node
 	var createResp struct {
@@ -193,8 +193,8 @@ func TestRollbackCompatibility(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Create a project with Go server
 	var createResp struct {
@@ -273,8 +273,8 @@ func TestComplexDataMigration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Create a project with fixtures and scenes using Node
 	var projectResp struct {

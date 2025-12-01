@@ -4,7 +4,7 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,8 +18,8 @@ func TestGraphQLAPIComparison(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	tests := []struct {
 		name      string
@@ -115,8 +115,8 @@ func TestMutationAPIComparison(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Test project creation with Node
 	var nodeCreateResp struct {
@@ -217,8 +217,8 @@ func TestErrorHandlingComparison(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	tests := []struct {
 		name      string
@@ -293,8 +293,8 @@ func TestConcurrentRequestsComparison(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Test concurrent queries
 	numRequests := 10
@@ -310,32 +310,29 @@ func TestConcurrentRequestsComparison(t *testing.T) {
 	// Run concurrent requests on Node server
 	nodeResults := make([]json.RawMessage, numRequests)
 	nodeErrors := make([]error, numRequests)
-	nodeDone := make(chan bool)
+	var wg sync.WaitGroup
+	wg.Add(numRequests * 2) // for both node and go requests
 
 	for i := 0; i < numRequests; i++ {
 		go func(idx int) {
+			defer wg.Done()
 			nodeResults[idx], nodeErrors[idx] = nodeClient.ExecuteRaw(ctx, query, nil)
-			nodeDone <- true
 		}(i)
 	}
 
 	// Run concurrent requests on Go server
 	goResults := make([]json.RawMessage, numRequests)
 	goErrors := make([]error, numRequests)
-	goDone := make(chan bool)
 
 	for i := 0; i < numRequests; i++ {
 		go func(idx int) {
+			defer wg.Done()
 			goResults[idx], goErrors[idx] = goClient.ExecuteRaw(ctx, query, nil)
-			goDone <- true
 		}(i)
 	}
 
 	// Wait for all requests to complete
-	for i := 0; i < numRequests; i++ {
-		<-nodeDone
-		<-goDone
-	}
+	wg.Wait()
 
 	// Verify all requests succeeded
 	nodeSuccesses := 0
@@ -367,8 +364,8 @@ func TestSubscriptionAPIComparison(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Test introspection to verify subscription types exist
 	query := `
@@ -429,8 +426,8 @@ func TestSchemaIntrospectionComparison(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-	goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
+	nodeClient := graphql.NewClient(getNodeServerURL())
+	goClient := graphql.NewClient(getGoServerURL())
 
 	// Full introspection query
 	query := `
