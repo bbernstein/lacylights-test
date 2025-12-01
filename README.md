@@ -53,6 +53,13 @@ make test-dmx
 # Run fade behavior tests (includes Art-Net capture)
 make test-fade
 
+# Run migration tests (new!)
+make test-migration          # All migration tests
+make test-migration-quick    # Quick migration tests (excludes slow tests)
+make test-migration-db       # Database compatibility tests
+make test-migration-api      # API comparison tests
+make test-migration-e2e      # End-to-end migration tests
+
 # Run all tests
 make test
 ```
@@ -96,6 +103,26 @@ Test preview session creation, channel overrides, commit, and cancel.
 - **Coverage**: Session lifecycle, channel updates.
 - **Missing**: Multi-user preview sessions.
 
+## Migration Testing
+
+Comprehensive migration tests have been added to validate the Go backend migration. See [MIGRATION_TESTING.md](MIGRATION_TESTING.md) for detailed documentation.
+
+**New Test Categories**:
+
+1. **Database Migration Tests** - Verify Go can read/write Node's SQLite database
+2. **API Comparison Tests** - Ensure GraphQL APIs return identical responses
+3. **Distribution Tests** - Validate S3 binary downloads and checksums
+4. **End-to-End Tests** - Simulate complete migration workflows
+
+**Quick Start**:
+```bash
+# Run quick migration tests (2-3 minutes)
+make test-migration-quick
+
+# Run full migration suite (5-15 minutes)
+make test-migration
+```
+
 ## Areas Needing Coverage
 
 The following areas still need significant test coverage:
@@ -111,7 +138,7 @@ The following areas still need significant test coverage:
    - Event ordering
 
 3. **System Integration**:
-   - Database migration verification
+   - ✅ Database migration verification (added!)
    - Import/Export project fidelity
 
 ## Writing New Tests

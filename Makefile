@@ -118,6 +118,42 @@ test-e2e:
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) $(GO) test $(GOFLAGS) ./e2e/...
 
 # =============================================================================
+# MIGRATION TESTS
+# =============================================================================
+
+## test-migration: Run all migration tests
+test-migration: test-migration-db test-migration-api test-migration-distribution test-migration-e2e
+
+## test-migration-db: Run database migration tests
+test-migration-db:
+	@echo "Running database migration tests..."
+	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
+		$(GO) test $(GOFLAGS) -run "TestDatabase|TestDataPreservation|TestRollback|TestComplexDataMigration" ./integration/...
+
+## test-migration-api: Run API comparison tests
+test-migration-api:
+	@echo "Running API comparison tests..."
+	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
+		$(GO) test $(GOFLAGS) -run "TestGraphQLAPIComparison|TestMutationAPIComparison|TestErrorHandling|TestConcurrent|TestSubscription|TestSchemaIntrospection" ./integration/...
+
+## test-migration-distribution: Run S3 distribution tests
+test-migration-distribution:
+	@echo "Running S3 distribution tests..."
+	$(GO) test $(GOFLAGS) -run "TestLatestJSON|TestBinaryDownload|TestChecksum|TestBinaryExecutable|TestVersionConsistency|TestAllPlatformsAvailable|TestDistributionCDN" ./integration/...
+
+## test-migration-e2e: Run end-to-end migration tests
+test-migration-e2e:
+	@echo "Running end-to-end migration tests..."
+	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
+		$(GO) test $(GOFLAGS) -timeout 10m -run "TestFullMigrationWorkflow|TestRollbackScenario|TestDataIntegrity|TestMigrationPerformance" ./e2e/...
+
+## test-migration-quick: Run quick migration tests (excludes slow tests)
+test-migration-quick:
+	@echo "Running quick migration tests..."
+	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
+		$(GO) test $(GOFLAGS) -short -run ".*[Mm]igration.*" ./integration/... ./e2e/...
+
+# =============================================================================
 # ALL TESTS
 # =============================================================================
 
