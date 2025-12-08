@@ -105,7 +105,7 @@ Test preview session creation, channel overrides, commit, and cancel.
 
 ## Migration Testing
 
-Comprehensive migration tests have been added to validate the Go backend migration. See [MIGRATION_TESTING.md](MIGRATION_TESTING.md) for detailed documentation.
+Comprehensive migration tests have been added to validate the Go backend migration. See [docs/MIGRATION_TESTING.md](docs/MIGRATION_TESTING.md) for detailed documentation.
 
 **New Test Categories**:
 
