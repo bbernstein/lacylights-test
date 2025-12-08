@@ -415,7 +415,4 @@ Potential additions to the migration test suite:
 
 ## Related Documentation
 
-- [Contract Testing Plan](CONTRACT_TESTING_PLAN.md)
-- [Go Rewrite Plan](../LACYLIGHTS_GO_REWRITE_PLAN.md)
-- [Go Rewrite Progress](../LACYLIGHTS_GO_REWRITE_PROGRESS.md)
-- [Main README](README.md)
+- [Main README](../README.md)
