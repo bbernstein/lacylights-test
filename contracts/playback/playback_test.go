@@ -738,11 +738,20 @@ func TestIsFadingDuringTransition(t *testing.T) {
 
 	require.NoError(t, err)
 	// During fade, isFading should be true
-	// Note: This may be flaky if the fade completes very quickly
+	// Note: Due to timing, the fade might complete very quickly in CI environments
 	t.Logf("Immediately after start: isPlaying=%v, isFading=%v, fadeProgress=%v",
 		statusResp.CueListPlaybackStatus.IsPlaying,
 		statusResp.CueListPlaybackStatus.IsFading,
 		statusResp.CueListPlaybackStatus.FadeProgress)
+
+	// If we caught the fade in progress, assert isFading is true
+	// This validates the semantic difference: isPlaying can be true while isFading is also true
+	if statusResp.CueListPlaybackStatus.FadeProgress != nil &&
+		*statusResp.CueListPlaybackStatus.FadeProgress > 0 &&
+		*statusResp.CueListPlaybackStatus.FadeProgress < 100 {
+		assert.True(t, statusResp.CueListPlaybackStatus.IsFading,
+			"isFading should be true when fadeProgress is between 0 and 100")
+	}
 
 	// Wait for fade to complete (cues have 1 second fade time)
 	time.Sleep(1500 * time.Millisecond)
