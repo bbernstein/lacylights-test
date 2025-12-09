@@ -746,8 +746,9 @@ func TestIsFadingDuringTransition(t *testing.T) {
 
 	// If we caught the fade in progress, assert isFading is true
 	// This validates the semantic difference: isPlaying can be true while isFading is also true
+	// Note: >= 0 includes the very start of the fade when fadeProgress is exactly 0
 	if statusResp.CueListPlaybackStatus.FadeProgress != nil &&
-		*statusResp.CueListPlaybackStatus.FadeProgress > 0 &&
+		*statusResp.CueListPlaybackStatus.FadeProgress >= 0 &&
 		*statusResp.CueListPlaybackStatus.FadeProgress < 100 {
 		assert.True(t, statusResp.CueListPlaybackStatus.IsFading,
 			"isFading should be true when fadeProgress is between 0 and 100")
