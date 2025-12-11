@@ -611,6 +611,9 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 		if earlyFrame.Universe == 0 {
 			dimmer := earlyFrame.Channels[0]
 			// Dimmer should be somewhere between 0 and 200 (not immediately at target)
+			// Assert that FADE channels are actually fading, not snapping
+			assert.True(t, dimmer < 200,
+				"FADE channel (Dimmer) should not immediately reach target at frame 2 (got %d)", dimmer)
 			if dimmer > 0 && dimmer < 200 {
 				t.Logf("FADE channel (Dimmer) interpolating correctly: value=%d at frame 2", dimmer)
 			}

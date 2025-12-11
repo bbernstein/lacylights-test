@@ -260,21 +260,25 @@ func TestTriggerOFLImport(t *testing.T) {
 				pollResp.OFLImportStatus.FailedCount)
 
 			if !pollResp.OFLImportStatus.IsImporting {
-				// Import completed
-				if pollResp.OFLImportStatus.Phase == "FAILED" {
+				// Import completed - check final phase
+				switch pollResp.OFLImportStatus.Phase {
+				case "FAILED":
 					errMsg := "unknown error"
 					if pollResp.OFLImportStatus.ErrorMessage != nil {
 						errMsg = *pollResp.OFLImportStatus.ErrorMessage
 					}
 					t.Fatalf("OFL import failed: %s", errMsg)
+				case "CANCELLED":
+					t.Fatal("OFL import was cancelled unexpectedly")
+				case "COMPLETE":
+					assert.Greater(t, pollResp.OFLImportStatus.ImportedCount, 0, "Should have imported some fixtures")
+					t.Logf("Import completed: %d fixtures imported, %d failed",
+						pollResp.OFLImportStatus.ImportedCount,
+						pollResp.OFLImportStatus.FailedCount)
+					return
+				default:
+					t.Fatalf("OFL import ended in unexpected phase: %s", pollResp.OFLImportStatus.Phase)
 				}
-
-				assert.Equal(t, "COMPLETE", pollResp.OFLImportStatus.Phase)
-				assert.Greater(t, pollResp.OFLImportStatus.ImportedCount, 0, "Should have imported some fixtures")
-				t.Logf("Import completed: %d fixtures imported, %d failed",
-					pollResp.OFLImportStatus.ImportedCount,
-					pollResp.OFLImportStatus.FailedCount)
-				return
 			}
 		}
 	}
