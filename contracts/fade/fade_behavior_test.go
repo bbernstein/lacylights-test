@@ -606,11 +606,13 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	}
 
 	// Verify FADE channels were interpolating (not jumping immediately)
+	// At ~44Hz Art-Net rate, frame 2 should be ~45ms into a 1-second fade,
+	// so FADE channels should be around 4.5% of target value, not at 100%
 	if len(frames) > 5 {
-		earlyFrame := frames[2] // Early in the fade
+		earlyFrame := frames[2]
 		if earlyFrame.Universe == 0 {
 			dimmer := earlyFrame.Channels[0]
-			// Dimmer should be somewhere between 0 and 200 (not immediately at target)
+			// Dimmer should not have snapped immediately to target
 			// Assert that FADE channels are actually fading, not snapping
 			assert.True(t, dimmer < 200,
 				"FADE channel (Dimmer) should not immediately reach target at frame 2 (got %d)", dimmer)

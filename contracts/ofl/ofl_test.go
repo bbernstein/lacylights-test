@@ -359,29 +359,29 @@ func TestOFLImportedFixturesHaveFadeBehavior(t *testing.T) {
 
 	// Find fixtures that have OFL source hash (imported from OFL)
 	oflFixtureCount := 0
-	// snapTypes defined outside loop to avoid unnecessary allocations
-	snapTypes := []string{"STROBE", "COLOR_MACRO", "GOBO", "PRISM", "EFFECT_SPEED", "SHUTTER"}
 	for _, def := range resp.FixtureDefinitions {
 		if def.OFLSourceHash != nil && *def.OFLSourceHash != "" {
 			oflFixtureCount++
 
 			// Check that channels have valid FadeBehavior
 			for _, ch := range def.Channels {
-				assert.Contains(t, []string{"FADE", "SNAP", "SNAP_END"}, ch.FadeBehavior,
+				assert.Containsf(t, []string{"FADE", "SNAP", "SNAP_END"}, ch.FadeBehavior,
 					"Channel %s in %s/%s should have valid FadeBehavior", ch.Name, def.Manufacturer, def.Model)
 
 				// Discrete channels should typically be SNAP
 				if ch.IsDiscrete {
-					assert.Equal(t, "SNAP", ch.FadeBehavior,
+					assert.Equalf(t, "SNAP", ch.FadeBehavior,
 						"Discrete channel %s in %s/%s should have SNAP behavior", ch.Name, def.Manufacturer, def.Model)
 				}
 
-				// Certain channel types should be SNAP
-				for _, snapType := range snapTypes {
-					if ch.Type == snapType {
-						assert.Equal(t, "SNAP", ch.FadeBehavior,
-							"Channel type %s (%s in %s/%s) should have SNAP behavior", ch.Type, ch.Name, def.Manufacturer, def.Model)
-					}
+				// Certain channel types should be SNAP (use map for O(1) lookup)
+				snapTypeSet := map[string]bool{
+					"STROBE": true, "COLOR_MACRO": true, "GOBO": true,
+					"PRISM": true, "EFFECT_SPEED": true, "SHUTTER": true,
+				}
+				if snapTypeSet[ch.Type] {
+					assert.Equalf(t, "SNAP", ch.FadeBehavior,
+						"Channel type %s (%s in %s/%s) should have SNAP behavior", ch.Type, ch.Name, def.Manufacturer, def.Model)
 				}
 			}
 		}
