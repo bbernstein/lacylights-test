@@ -515,9 +515,12 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	sceneOnID := setup.createScene(t, "Scene On", []int{200, 150, 100, 50, 180, 255})
 
 	// Start Art-Net receiver
-	receiver, err := artnet.NewReceiver(getArtNetPort())
-	require.NoError(t, err)
-	defer receiver.Close()
+	receiver := artnet.NewReceiver(getArtNetPort())
+	err := receiver.Start()
+	if err != nil {
+		t.Skipf("Could not start Art-Net receiver: %v", err)
+	}
+	defer func() { _ = receiver.Stop() }()
 
 	// Ensure we start from black
 	var fadeResp struct {
@@ -527,9 +530,8 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
 
-	// Start capturing Art-Net frames
-	captureCtx, captureCancel := context.WithTimeout(ctx, 3*time.Second)
-	frameChan := receiver.CaptureFramesAsync(captureCtx)
+	// Clear any previous frames before starting capture
+	receiver.ClearFrames()
 
 	// Activate scene with 1 second fade
 	var activateResp struct {
@@ -547,11 +549,11 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, activateResp.ActivateSceneFromBoard)
 
-	// Wait for capture to complete
-	time.Sleep(2 * time.Second)
-	captureCancel()
+	// Wait for fade to complete plus buffer
+	time.Sleep(1500 * time.Millisecond)
 
-	frames := <-frameChan
+	// Get captured frames
+	frames := receiver.GetFrames()
 
 	if len(frames) < 10 {
 		t.Skipf("Not enough Art-Net frames captured (%d), skipping DMX verification", len(frames))
@@ -573,8 +575,9 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 		}
 
 		// Check SNAP channels (indexes 4, 5 = channels 5, 6)
-		colorMacro := frame.Data[4]
-		strobe := frame.Data[5]
+		// frame.Channels is a fixed-size [512]byte array, so indexes are always valid
+		colorMacro := frame.Channels[4]
+		strobe := frame.Channels[5]
 
 		if colorMacro == 180 && strobe == 255 && snapReachedTarget == -1 {
 			snapReachedTarget = i
@@ -582,10 +585,10 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 		}
 
 		// Check FADE channels (indexes 0-3 = channels 1-4)
-		dimmer := frame.Data[0]
-		red := frame.Data[1]
-		green := frame.Data[2]
-		blue := frame.Data[3]
+		dimmer := frame.Channels[0]
+		red := frame.Channels[1]
+		green := frame.Channels[2]
+		blue := frame.Channels[3]
 
 		if dimmer == 200 && red == 150 && green == 100 && blue == 50 && fadeReachedTarget == -1 {
 			fadeReachedTarget = i
@@ -606,7 +609,7 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	if len(frames) > 5 {
 		earlyFrame := frames[2] // Early in the fade
 		if earlyFrame.Universe == 0 {
-			dimmer := earlyFrame.Data[0]
+			dimmer := earlyFrame.Channels[0]
 			// Dimmer should be somewhere between 0 and 200 (not immediately at target)
 			if dimmer > 0 && dimmer < 200 {
 				t.Logf("FADE channel (Dimmer) interpolating correctly: value=%d at frame 2", dimmer)
