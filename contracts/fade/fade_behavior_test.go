@@ -565,9 +565,9 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	// SNAP channels (5, 6 = Color Macro, Strobe) should reach target immediately
 	// FADE channels (1-4 = Dimmer, R, G, B) should interpolate
 
-	// Find first frame where SNAP channels are at target
-	snapReachedTarget := -1
-	fadeReachedTarget := -1
+	// Find first frame index where SNAP channels are at target
+	snapTargetFrame := -1
+	fadeTargetFrame := -1
 
 	for i, frame := range frames {
 		if frame.Universe != 0 { // Universe 1 = index 0
@@ -579,8 +579,8 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 		colorMacro := frame.Channels[4]
 		strobe := frame.Channels[5]
 
-		if colorMacro == 180 && strobe == 255 && snapReachedTarget == -1 {
-			snapReachedTarget = i
+		if colorMacro == 180 && strobe == 255 && snapTargetFrame == -1 {
+			snapTargetFrame = i
 			t.Logf("SNAP channels reached target at frame %d", i)
 		}
 
@@ -590,18 +590,18 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 		green := frame.Channels[2]
 		blue := frame.Channels[3]
 
-		if dimmer == 200 && red == 150 && green == 100 && blue == 50 && fadeReachedTarget == -1 {
-			fadeReachedTarget = i
+		if dimmer == 200 && red == 150 && green == 100 && blue == 50 && fadeTargetFrame == -1 {
+			fadeTargetFrame = i
 			t.Logf("FADE channels reached target at frame %d", i)
 		}
 	}
 
 	// SNAP channels should reach target much sooner than FADE channels
-	if snapReachedTarget >= 0 && fadeReachedTarget >= 0 {
-		assert.Less(t, snapReachedTarget, fadeReachedTarget,
+	if snapTargetFrame >= 0 && fadeTargetFrame >= 0 {
+		assert.Less(t, snapTargetFrame, fadeTargetFrame,
 			"SNAP channels should reach target before FADE channels (snap=%d, fade=%d)",
-			snapReachedTarget, fadeReachedTarget)
-	} else if snapReachedTarget == -1 {
+			snapTargetFrame, fadeTargetFrame)
+	} else if snapTargetFrame == -1 {
 		t.Log("Warning: SNAP channels did not reach target in captured frames")
 	}
 

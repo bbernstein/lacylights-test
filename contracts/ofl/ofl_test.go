@@ -355,6 +355,8 @@ func TestOFLImportedFixturesHaveFadeBehavior(t *testing.T) {
 
 	// Find fixtures that have OFL source hash (imported from OFL)
 	oflFixtureCount := 0
+	// snapTypes defined outside loop to avoid unnecessary allocations
+	snapTypes := []string{"STROBE", "COLOR_MACRO", "GOBO", "PRISM", "EFFECT_SPEED", "SHUTTER"}
 	for _, def := range resp.FixtureDefinitions {
 		if def.OFLSourceHash != nil && *def.OFLSourceHash != "" {
 			oflFixtureCount++
@@ -371,7 +373,6 @@ func TestOFLImportedFixturesHaveFadeBehavior(t *testing.T) {
 				}
 
 				// Certain channel types should be SNAP
-				snapTypes := []string{"STROBE", "COLOR_MACRO", "GOBO", "PRISM", "EFFECT_SPEED", "SHUTTER"}
 				for _, snapType := range snapTypes {
 					if ch.Type == snapType {
 						assert.Equal(t, "SNAP", ch.FadeBehavior,
