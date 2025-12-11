@@ -562,8 +562,8 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	t.Logf("Captured %d Art-Net frames", len(frames))
 
 	// Analyze frames to verify SNAP vs FADE behavior
-	// SNAP channels (5, 6 = Color Macro, Strobe) should reach target immediately
-	// FADE channels (1-4 = Dimmer, R, G, B) should interpolate
+	// SNAP channels (DMX channels 5-6 = Color Macro, Strobe) should reach target immediately
+	// FADE channels (DMX channels 1-4 = Dimmer, R, G, B) should interpolate
 
 	// Find first frame index where SNAP channels are at target
 	snapTargetFrame := -1
