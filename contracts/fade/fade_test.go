@@ -1432,14 +1432,12 @@ func TestFadeAllChannels4Universes(t *testing.T) {
 		{2200 * time.Millisecond, 20, 15},
 	}
 
-	lastSampleTime := fadeStart
 	for _, sample := range samples {
-		// Wait relative to last sample
+		// Wait relative to fade start
 		sleepTime := sample.delay - time.Since(fadeStart)
 		if sleepTime > 0 {
 			time.Sleep(sleepTime)
 		}
-		lastSampleTime = time.Now()
 
 		// Sample all universes
 		for universe := 1; universe <= numUniverses; universe++ {
@@ -1465,7 +1463,6 @@ func TestFadeAllChannels4Universes(t *testing.T) {
 					"Channel 1 and 512 should be similar during fade")
 			}
 		}
-		_ = lastSampleTime // suppress unused variable warning
 	}
 
 	// Wait for fade to complete

@@ -204,11 +204,12 @@ func (c *Client) CollectMessages(ctx context.Context, query string, variables ma
 			if !ok {
 				return messages, nil
 			}
-			if msg.Type == Next {
+			switch msg.Type {
+			case Next:
 				messages = append(messages, msg.Payload)
-			} else if msg.Type == Error {
+			case Error:
 				return messages, fmt.Errorf("subscription error: %s", string(msg.Payload))
-			} else if msg.Type == Complete {
+			case Complete:
 				return messages, nil
 			}
 		}

@@ -84,11 +84,11 @@ func TestFullMigrationWorkflow(t *testing.T) {
 
 	// Add a new fixture with Go
 	newFixtureID := createFixture(t, ctx, goClient, projectID, "Go Created Fixture")
-	fixtureIDs = append(fixtureIDs, newFixtureID)
+	_ = append(fixtureIDs, newFixtureID) // Updated slice not needed; just verifying Go can add fixtures
 
 	// Add a new scene with Go
 	newSceneID := createScene(t, ctx, goClient, projectID, []string{newFixtureID})
-	sceneIDs = append(sceneIDs, newSceneID)
+	_ = append(sceneIDs, newSceneID) // Updated slice not needed; just verifying Go can add scenes
 
 	t.Log("=== Phase 4: Verify Node server can read Go modifications ===")
 

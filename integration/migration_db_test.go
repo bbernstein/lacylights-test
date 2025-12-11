@@ -22,7 +22,7 @@ func TestDatabaseSchemaCompatibility(t *testing.T) {
 
 	// Create a test database with Node schema
 	dbPath := createTestDatabase(t)
-	defer os.Remove(dbPath)
+	defer func() { _ = os.Remove(dbPath) }()
 
 	// Populate database with test data
 	populateTestData(t, dbPath)
@@ -76,7 +76,7 @@ func TestDatabaseTableStructure(t *testing.T) {
 
 	db, err := sql.Open("sqlite3", dbPath)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Expected tables in LacyLights schema
 	expectedTables := []string{
@@ -449,7 +449,7 @@ func createTestDatabase(t *testing.T) string {
 
 	db, err := sql.Open("sqlite3", dbPath)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Create basic schema (simplified version of LacyLights schema)
 	schema := `
@@ -473,7 +473,7 @@ func populateTestData(t *testing.T, dbPath string) {
 
 	db, err := sql.Open("sqlite3", dbPath)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Insert test project
 	_, err = db.Exec(`

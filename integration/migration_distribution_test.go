@@ -46,7 +46,7 @@ func TestLatestJSONEndpoint(t *testing.T) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "latest.json should be accessible")
 
@@ -113,7 +113,7 @@ func TestBinaryDownload(t *testing.T) {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "Binary should be downloadable")
 
@@ -181,7 +181,7 @@ func TestBinaryExecutable(t *testing.T) {
 
 	// Download binary to temp file
 	tmpFile := downloadBinary(t, artifactURL)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Make executable
 	err := os.Chmod(tmpFile, 0755)
@@ -252,7 +252,7 @@ func TestAllPlatformsAvailable(t *testing.T) {
 				client := &http.Client{Timeout: 10 * time.Second}
 				resp, err := client.Do(req)
 				if err == nil {
-					defer resp.Body.Close()
+					defer func() { _ = resp.Body.Close() }()
 					assert.Equal(t, http.StatusOK, resp.StatusCode,
 						"Binary for %s should be accessible", platform)
 				} else {
@@ -277,7 +277,7 @@ func TestDistributionCDN(t *testing.T) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Verify CORS headers for browser downloads (optional)
 	corsHeader := resp.Header.Get("Access-Control-Allow-Origin")
@@ -320,7 +320,7 @@ func getLatestJSON(t *testing.T, s3BaseURL string) LatestJSON {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var latest LatestJSON
 	err = json.NewDecoder(resp.Body).Decode(&latest)
@@ -347,7 +347,7 @@ func downloadAndChecksum(t *testing.T, url string) string {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	hasher := sha256.New()
 	_, err = io.Copy(hasher, resp.Body)
@@ -368,12 +368,12 @@ func downloadBinary(t *testing.T, url string) string {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Create temp file
 	tmpFile, err := os.CreateTemp("", "lacylights-test-*")
 	require.NoError(t, err)
-	defer tmpFile.Close()
+	defer func() { _ = tmpFile.Close() }()
 
 	_, err = io.Copy(tmpFile, resp.Body)
 	require.NoError(t, err)
