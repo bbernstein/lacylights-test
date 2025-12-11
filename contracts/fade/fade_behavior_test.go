@@ -606,8 +606,8 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	}
 
 	// Verify FADE channels were interpolating (not jumping immediately)
-	// At ~44Hz Art-Net rate, frame 2 should be ~45ms into a 1-second fade,
-	// so FADE channels should be around 4.5% of target value, not at 100%
+	// Frame 2 should be early enough in a 1-second fade that FADE channels
+	// haven't reached their target yet (unless they snapped immediately like SNAP channels)
 	if len(frames) > 5 {
 		earlyFrame := frames[2]
 		if earlyFrame.Universe == 0 {

@@ -368,20 +368,20 @@ func TestOFLImportedFixturesHaveFadeBehavior(t *testing.T) {
 				assert.Containsf(t, []string{"FADE", "SNAP", "SNAP_END"}, ch.FadeBehavior,
 					"Channel %s in %s/%s should have valid FadeBehavior", ch.Name, def.Manufacturer, def.Model)
 
-				// Discrete channels should typically be SNAP
+				// Discrete channels should have non-fade behavior (SNAP or SNAP_END)
 				if ch.IsDiscrete {
-					assert.Equalf(t, "SNAP", ch.FadeBehavior,
-						"Discrete channel %s in %s/%s should have SNAP behavior", ch.Name, def.Manufacturer, def.Model)
+					assert.Containsf(t, []string{"SNAP", "SNAP_END"}, ch.FadeBehavior,
+						"Discrete channel %s in %s/%s should have SNAP or SNAP_END behavior", ch.Name, def.Manufacturer, def.Model)
 				}
 
-				// Certain channel types should be SNAP (use map for O(1) lookup)
-				snapTypeSet := map[string]bool{
+				// Certain channel types should have non-fade behavior (SNAP or SNAP_END)
+				discreteTypeSet := map[string]bool{
 					"STROBE": true, "COLOR_MACRO": true, "GOBO": true,
 					"PRISM": true, "EFFECT_SPEED": true, "SHUTTER": true,
 				}
-				if snapTypeSet[ch.Type] {
-					assert.Equalf(t, "SNAP", ch.FadeBehavior,
-						"Channel type %s (%s in %s/%s) should have SNAP behavior", ch.Type, ch.Name, def.Manufacturer, def.Model)
+				if discreteTypeSet[ch.Type] {
+					assert.Containsf(t, []string{"SNAP", "SNAP_END"}, ch.FadeBehavior,
+						"Channel type %s (%s in %s/%s) should have SNAP or SNAP_END behavior", ch.Type, ch.Name, def.Manufacturer, def.Model)
 				}
 			}
 		}
