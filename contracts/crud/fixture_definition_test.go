@@ -35,6 +35,8 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 					DefaultValue int    `json:"defaultValue"`
 					MinValue     int    `json:"minValue"`
 					MaxValue     int    `json:"maxValue"`
+					FadeBehavior string `json:"fadeBehavior"`
+					IsDiscrete   bool   `json:"isDiscrete"`
 				} `json:"channels"`
 			} `json:"createFixtureDefinition"`
 		}
@@ -55,6 +57,8 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 						defaultValue
 						minValue
 						maxValue
+						fadeBehavior
+						isDiscrete
 					}
 				}
 			}
@@ -71,6 +75,7 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 						"defaultValue": 0,
 						"minValue":     0,
 						"maxValue":     255,
+						"fadeBehavior": "FADE",
 					},
 					{
 						"name":         "Green",
@@ -79,6 +84,7 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 						"defaultValue": 0,
 						"minValue":     0,
 						"maxValue":     255,
+						"fadeBehavior": "FADE",
 					},
 					{
 						"name":         "Blue",
@@ -87,6 +93,7 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 						"defaultValue": 0,
 						"minValue":     0,
 						"maxValue":     255,
+						"fadeBehavior": "FADE",
 					},
 					{
 						"name":         "Dimmer",
@@ -95,6 +102,7 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 						"defaultValue": 0,
 						"minValue":     0,
 						"maxValue":     255,
+						"fadeBehavior": "FADE",
 					},
 				},
 			},
@@ -108,6 +116,11 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 		assert.False(t, createResp.CreateFixtureDefinition.IsBuiltIn)
 		assert.Len(t, createResp.CreateFixtureDefinition.Channels, 4)
 
+		// Verify FadeBehavior is returned for channels
+		for _, ch := range createResp.CreateFixtureDefinition.Channels {
+			assert.Equal(t, "FADE", ch.FadeBehavior, "Channel %s should have FADE behavior", ch.Name)
+		}
+
 		definitionID := createResp.CreateFixtureDefinition.ID
 
 		// READ
@@ -119,8 +132,10 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 					Model        string `json:"model"`
 					Type         string `json:"type"`
 					Channels     []struct {
-						Name string `json:"name"`
-						Type string `json:"type"`
+						Name         string `json:"name"`
+						Type         string `json:"type"`
+						FadeBehavior string `json:"fadeBehavior"`
+						IsDiscrete   bool   `json:"isDiscrete"`
 					} `json:"channels"`
 					Modes []struct {
 						ID           string `json:"id"`
@@ -140,6 +155,8 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 						channels {
 							name
 							type
+							fadeBehavior
+							isDiscrete
 						}
 						modes {
 							id
@@ -154,6 +171,12 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 			assert.Equal(t, definitionID, readResp.FixtureDefinition.ID)
 			assert.Equal(t, "Test Manufacturer", readResp.FixtureDefinition.Manufacturer)
 			assert.Equal(t, "Test CRUD Model", readResp.FixtureDefinition.Model)
+
+			// Verify FadeBehavior and IsDiscrete are readable
+			for _, ch := range readResp.FixtureDefinition.Channels {
+				assert.Equal(t, "FADE", ch.FadeBehavior, "Channel %s should have FADE behavior", ch.Name)
+				assert.False(t, ch.IsDiscrete, "Channel %s should not be discrete", ch.Name)
+			}
 		})
 
 		// UPDATE
@@ -367,8 +390,10 @@ func TestBuiltInFixtureDefinitions(t *testing.T) {
 			Type         string `json:"type"`
 			IsBuiltIn    bool   `json:"isBuiltIn"`
 			Channels     []struct {
-				Name string `json:"name"`
-				Type string `json:"type"`
+				Name         string `json:"name"`
+				Type         string `json:"type"`
+				FadeBehavior string `json:"fadeBehavior"`
+				IsDiscrete   bool   `json:"isDiscrete"`
 			} `json:"channels"`
 		} `json:"fixtureDefinitions"`
 	}
@@ -384,6 +409,8 @@ func TestBuiltInFixtureDefinitions(t *testing.T) {
 				channels {
 					name
 					type
+					fadeBehavior
+					isDiscrete
 				}
 			}
 		}
@@ -399,6 +426,12 @@ func TestBuiltInFixtureDefinitions(t *testing.T) {
 			foundDimmer = true
 			assert.Equal(t, "DIMMER", def.Type)
 			assert.NotEmpty(t, def.Channels)
+
+			// Verify channels have valid FadeBehavior
+			for _, ch := range def.Channels {
+				assert.Contains(t, []string{"FADE", "SNAP", "SNAP_END"}, ch.FadeBehavior,
+					"Channel %s should have valid FadeBehavior", ch.Name)
+			}
 			break
 		}
 	}
