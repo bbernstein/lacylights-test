@@ -5,13 +5,12 @@ GOFLAGS := -v
 
 # Server URLs
 GO_SERVER_URL ?= http://localhost:4001/graphql
-NODE_SERVER_URL ?= http://localhost:4000/graphql
 
 # Art-Net settings
 ARTNET_LISTEN_PORT ?= 6455
 
-.PHONY: all build clean test test-contracts test-contracts-node test-contracts-go \
-        test-contracts-compare test-dmx test-fade test-preview lint help deps \
+.PHONY: all build clean test test-contracts test-contracts-go \
+        test-dmx test-fade test-preview lint help deps \
         start-go-server stop-go-server wait-for-server test-load run-load-tests
 
 # =============================================================================
@@ -48,24 +47,13 @@ clean:
 # CONTRACT TESTS
 # =============================================================================
 
-## test-contracts: Run API contract tests against Go server (default)
+## test-contracts: Run API contract tests against Go server
 test-contracts: test-contracts-go
 
 ## test-contracts-go: Run API contract tests against Go server
 test-contracts-go:
 	@echo "Running contract tests against Go server..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) $(GO) test $(GOFLAGS) ./contracts/api/...
-
-## test-contracts-node: Run API contract tests against Node server
-test-contracts-node:
-	@echo "Running contract tests against Node server..."
-	GRAPHQL_ENDPOINT=$(NODE_SERVER_URL) $(GO) test $(GOFLAGS) ./contracts/api/...
-
-## test-contracts-compare: Run contract tests against both servers and compare
-test-contracts-compare:
-	@echo "Running comparison tests against both servers..."
-	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
-		$(GO) test $(GOFLAGS) ./contracts/api/... -tags=compare
 
 # =============================================================================
 # DMX BEHAVIOR TESTS
@@ -76,13 +64,6 @@ test-dmx:
 	@echo "Running DMX behavior tests..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) ARTNET_LISTEN_PORT=$(ARTNET_LISTEN_PORT) \
 		$(GO) test $(GOFLAGS) ./contracts/dmx/...
-
-## test-dmx-compare: Run DMX tests comparing both servers
-test-dmx-compare:
-	@echo "Running DMX comparison tests..."
-	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
-		ARTNET_LISTEN_PORT=$(ARTNET_LISTEN_PORT) \
-		$(GO) test $(GOFLAGS) ./contracts/dmx/... -tags=compare
 
 # =============================================================================
 # FADE TESTS
@@ -104,7 +85,7 @@ test-preview:
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) $(GO) test $(GOFLAGS) ./contracts/preview/...
 
 # =============================================================================
-# INTEGRATION & E2E TESTS
+# INTEGRATION TESTS
 # =============================================================================
 
 ## test-integration: Run integration tests
@@ -112,46 +93,10 @@ test-integration:
 	@echo "Running integration tests..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) $(GO) test $(GOFLAGS) ./integration/...
 
-## test-e2e: Run end-to-end tests
-test-e2e:
-	@echo "Running e2e tests..."
-	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) $(GO) test $(GOFLAGS) ./e2e/...
-
-# =============================================================================
-# MIGRATION TESTS
-# =============================================================================
-
-## test-migration: Run all migration tests
-test-migration: test-migration-db test-migration-api test-migration-distribution test-migration-e2e
-
-## test-migration-db: Run database migration tests
-test-migration-db:
-	@echo "Running database migration tests..."
-	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
-		$(GO) test $(GOFLAGS) -run "TestDatabase|TestDataPreservation|TestRollback|TestComplexDataMigration" ./integration/...
-
-## test-migration-api: Run API comparison tests
-test-migration-api:
-	@echo "Running API comparison tests..."
-	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
-		$(GO) test $(GOFLAGS) -run "TestGraphQLAPIComparison|TestMutationAPIComparison|TestErrorHandling|TestConcurrent|TestSubscription|TestSchemaIntrospection" ./integration/...
-
-## test-migration-distribution: Run S3 distribution tests
-test-migration-distribution:
+## test-distribution: Run S3 distribution tests
+test-distribution:
 	@echo "Running S3 distribution tests..."
 	$(GO) test $(GOFLAGS) -run "TestLatestJSON|TestBinaryDownload|TestChecksum|TestBinaryExecutable|TestVersionConsistency|TestAllPlatformsAvailable|TestDistributionCDN" ./integration/...
-
-## test-migration-e2e: Run end-to-end migration tests
-test-migration-e2e:
-	@echo "Running end-to-end migration tests..."
-	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
-		$(GO) test $(GOFLAGS) -timeout 10m -run "TestFullMigrationWorkflow|TestRollbackScenario|TestDataIntegrity|TestMigrationPerformance" ./e2e/...
-
-## test-migration-quick: Run quick migration tests (excludes slow tests)
-test-migration-quick:
-	@echo "Running quick migration tests..."
-	GO_SERVER_URL=$(GO_SERVER_URL) NODE_SERVER_URL=$(NODE_SERVER_URL) \
-		$(GO) test $(GOFLAGS) -short -run ".*[Mm]igration.*" ./integration/... ./e2e/...
 
 # =============================================================================
 # ALL TESTS
@@ -162,9 +107,6 @@ test:
 	@echo "Running all tests..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) ARTNET_LISTEN_PORT=$(ARTNET_LISTEN_PORT) \
 		$(GO) test $(GOFLAGS) ./...
-
-## test-all-compare: Run all comparison tests
-test-all-compare: test-contracts-compare test-dmx-compare
 
 # =============================================================================
 # LINT
@@ -195,7 +137,6 @@ help:
 	@echo ""
 	@echo "Environment Variables:"
 	@echo "  GO_SERVER_URL      Go server endpoint (default: http://localhost:4001/graphql)"
-	@echo "  NODE_SERVER_URL    Node server endpoint (default: http://localhost:4000/graphql)"
 	@echo "  ARTNET_LISTEN_PORT Art-Net UDP port (default: 6454)"
 	@echo "  GO_SERVER_DIR      Path to lacylights-go repo (default: ../lacylights-go)"
 

@@ -1,15 +1,16 @@
 # LacyLights Test Suite
 
-Integration, contract, and end-to-end tests for the LacyLights lighting control system.
+Contract and integration tests for the LacyLights lighting control system (lacylights-go).
 
 ## Overview
 
 This test suite validates that:
-1. **API Contracts** - GraphQL APIs return identical responses from Node and Go servers
-2. **DMX Behavior** - Art-Net DMX output is identical between implementations
-3. **Fade Behavior** - Fade curves and timing match between servers
+1. **API Contracts** - GraphQL APIs return expected responses
+2. **DMX Behavior** - Art-Net DMX output is correct
+3. **Fade Behavior** - Fade curves, timing, and FadeBehavior work correctly
 4. **Preview Mode** - Preview session behavior is consistent
-5. **WebSocket Subscriptions** - Real-time updates are equivalent
+5. **OFL Import** - Open Fixture Library import works correctly
+6. **WebSocket Subscriptions** - Real-time updates work
 
 ## Architecture
 
@@ -20,142 +21,118 @@ lacylights-test/
 │   ├── graphql/     # GraphQL test client
 │   └── websocket/   # WebSocket subscription client
 ├── contracts/
-│   ├── api/         # Static API contract tests
+│   ├── api/         # API contract tests
+│   ├── crud/        # CRUD operation tests
 │   ├── dmx/         # DMX output behavior tests
-│   ├── fade/        # Fade curve and timing tests
-│   └── preview/     # Preview mode tests
-├── integration/     # Cross-component integration tests
-└── e2e/             # Full end-to-end tests
+│   ├── fade/        # Fade curve, timing, and FadeBehavior tests
+│   ├── ofl/         # OFL import tests
+│   ├── playback/    # Cue list playback tests
+│   ├── preview/     # Preview mode tests
+│   └── importexport/# Import/export tests
+└── integration/     # S3 distribution tests
 ```
 
 ## Prerequisites
 
 - Go 1.23+
-- Node server running on port 4000 (lacylights-node)
 - Go server running on port 4001 (lacylights-go)
-- Both servers should use the same database or be in a known state
 
 ## Running Tests
 
 ```bash
-# Run all contract tests against Go server (default)
-make test-contracts
-
-# Run contract tests against Node server
-make test-contracts-node
-
-# Run tests against both servers and compare
-make test-contracts-compare
-
-# Run DMX behavior tests (requires Art-Net)
-make test-dmx
-
-# Run fade behavior tests (includes Art-Net capture)
-make test-fade
-
-# Run migration tests (new!)
-make test-migration          # All migration tests
-make test-migration-quick    # Quick migration tests (excludes slow tests)
-make test-migration-db       # Database compatibility tests
-make test-migration-api      # API comparison tests
-make test-migration-e2e      # End-to-end migration tests
-
 # Run all tests
 make test
+
+# Run specific test categories
+make test-contracts   # API contract tests
+make test-dmx         # DMX behavior tests (requires Art-Net)
+make test-fade        # Fade behavior tests (includes Art-Net capture)
+make test-preview     # Preview mode tests
+make test-integration # Integration tests
+make test-distribution # S3 binary distribution tests
+
+# Run linters
+make lint
+
+# Server management
+make start-go-server  # Start lacylights-go in background
+make stop-go-server   # Stop the server
 ```
 
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GO_SERVER_URL` | `http://localhost:4001/graphql` | Go server GraphQL endpoint |
-| `NODE_SERVER_URL` | `http://localhost:4000/graphql` | Node server GraphQL endpoint |
-| `ARTNET_LISTEN_PORT` | `6455` | Port to listen for Art-Net packets (default 6455 for testing) |
-| `ARTNET_BROADCAST` | `127.0.0.1` | Broadcast address for Art-Net (use localhost for testing) |
-| `TEST_TIMEOUT` | `30s` | Default test timeout |
+| `GRAPHQL_ENDPOINT` | `http://localhost:4001/graphql` | Server GraphQL endpoint |
+| `GO_SERVER_URL` | `http://localhost:4001/graphql` | Alias for GRAPHQL_ENDPOINT |
+| `ARTNET_LISTEN_PORT` | `6455` | Port to listen for Art-Net packets |
+| `ARTNET_BROADCAST` | `127.0.0.1` | Broadcast address for Art-Net |
 
 > **Note:** Tests use Art-Net port **6455** and localhost broadcast (`127.0.0.1`) by default to avoid conflicts with other Art-Net software running on the standard port 6454.
 
-## Test Categories & Coverage
+## Test Categories
 
 ### 1. API Contract Tests (`contracts/api/`)
-Verify that GraphQL queries and mutations return identical responses from both servers.
-- **Coverage**: Basic CRUD for Scenes, Fixtures, CueLists.
-- **Missing**: Complex nested queries, edge case validation.
+Verify that GraphQL queries and mutations return expected responses.
 
-### 2. DMX Behavior Tests (`contracts/dmx/`)
-Capture actual Art-Net packets and verify DMX channel values match between servers.
-- **Coverage**: Basic channel output, universe mapping.
+### 2. CRUD Tests (`contracts/crud/`)
+Test Create, Read, Update, Delete operations for all entities:
+- Projects, Fixtures, Scenes, Cue Lists
 
-### 3. Fade Tests (`contracts/fade/`)
-Comprehensive testing of the fade engine.
-- **Coverage**:
-  - Linear and Sine easing curves
-  - Fade interruption (new scene, blackout)
-  - Cross-fading between scenes
-  - Cue list timing and transitions
-  - Preview mode isolation (ensure preview doesn't affect live output)
-  - Art-Net frame capture verification
-- **Status**: All tests passing. `TestCueFadeTimeOverride` requires server support for `fadeInTime` override (implemented).
+### 3. DMX Behavior Tests (`contracts/dmx/`)
+Capture actual Art-Net packets and verify DMX channel values.
 
-### 4. Preview Tests (`contracts/preview/`)
+### 4. Fade Tests (`contracts/fade/`)
+Comprehensive testing of the fade engine:
+- Linear and Bezier easing curves
+- Fade interruption (new scene, blackout)
+- Cross-fading between scenes
+- FadeBehavior (FADE, SNAP, SNAP_END) for channels
+- Art-Net frame capture verification
+
+### 5. OFL Tests (`contracts/ofl/`)
+Test Open Fixture Library import functionality:
+- Import status queries
+- Check for updates
+- Trigger imports
+- FadeBehavior auto-detection for imported fixtures
+
+### 6. Preview Tests (`contracts/preview/`)
 Test preview session creation, channel overrides, commit, and cancel.
-- **Coverage**: Session lifecycle, channel updates.
-- **Missing**: Multi-user preview sessions.
 
-## Migration Testing
+### 7. Playback Tests (`contracts/playback/`)
+Test cue list playback, navigation, and timing.
 
-Comprehensive migration tests have been added to validate the Go backend migration. See [docs/MIGRATION_TESTING.md](docs/MIGRATION_TESTING.md) for detailed documentation.
-
-**New Test Categories**:
-
-1. **Database Migration Tests** - Verify Go can read/write Node's SQLite database
-2. **API Comparison Tests** - Ensure GraphQL APIs return identical responses
-3. **Distribution Tests** - Validate S3 binary downloads and checksums
-4. **End-to-End Tests** - Simulate complete migration workflows
-
-**Quick Start**:
-```bash
-# Run quick migration tests (2-3 minutes)
-make test-migration-quick
-
-# Run full migration suite (5-15 minutes)
-make test-migration
-```
-
-## Areas Needing Coverage
-
-The following areas still need significant test coverage:
-
-1. **Complex Scenarios**:
-   - "Live Busking" (rapid changes)
-   - Long-running stability tests
-   - Network interruption recovery
-
-2. **WebSocket Subscriptions**:
-   - Real-time updates for faders/buttons
-   - Connection stability
-   - Event ordering
-
-3. **System Integration**:
-   - ✅ Database migration verification (added!)
-   - Import/Export project fidelity
+### 8. Integration Tests (`integration/`)
+- S3 distribution tests for binary downloads
+- Checksum validation
+- Platform availability verification
 
 ## Writing New Tests
 
-See existing tests in `contracts/` for examples. Key patterns:
+See existing tests in `contracts/` for examples. Key pattern:
 
 ```go
-// Test against a single server
 func TestSomething(t *testing.T) {
-    client := graphql.NewClient(os.Getenv("GRAPHQL_ENDPOINT"))
-    // ... test code
-}
+    client := graphql.NewClient("") // Uses GRAPHQL_ENDPOINT env var
 
-// Compare behavior between servers
-func TestSomethingComparison(t *testing.T) {
-    nodeClient := graphql.NewClient(os.Getenv("NODE_SERVER_URL"))
-    goClient := graphql.NewClient(os.Getenv("GO_SERVER_URL"))
-    // ... compare responses
+    var resp struct {
+        Project struct {
+            ID   string `json:"id"`
+            Name string `json:"name"`
+        } `json:"project"`
+    }
+
+    err := client.Query(ctx, `
+        query GetProject($id: ID!) {
+            project(id: $id) {
+                id
+                name
+            }
+        }
+    `, map[string]interface{}{"id": projectID}, &resp)
+
+    require.NoError(t, err)
+    assert.Equal(t, expectedName, resp.Project.Name)
 }
 ```
