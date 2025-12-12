@@ -6,10 +6,10 @@ GOFLAGS := -v
 # Server URLs
 GO_SERVER_URL ?= http://localhost:4001/graphql
 
-# Art-Net settings
-ARTNET_LISTEN_PORT ?= 6455
+# Art-Net settings (standard port 6454, localhost for testing)
+ARTNET_LISTEN_PORT ?= 6454
 
-.PHONY: all build clean test test-contracts test-contracts-go \
+.PHONY: all build clean test test-ci test-all test-contracts test-contracts-go \
         test-dmx test-fade test-preview lint help deps \
         start-go-server stop-go-server wait-for-server test-load run-load-tests
 
@@ -103,8 +103,22 @@ test-distribution:
 # =============================================================================
 
 ## test: Run all tests against Go server (serial to avoid resource contention)
+## Requires: Server running with Art-Net enabled (ARTNET_BROADCAST=127.0.0.1)
 test:
-	@echo "Running all tests..."
+	@echo "Running all tests (requires server with Art-Net on 127.0.0.1:$(ARTNET_LISTEN_PORT))..."
+	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) ARTNET_LISTEN_PORT=$(ARTNET_LISTEN_PORT) ARTNET_BROADCAST=127.0.0.1 \
+		$(GO) test $(GOFLAGS) -p 1 ./contracts/...
+
+## test-ci: Run tests suitable for CI (no Art-Net, no S3 distribution)
+## This skips fade/DMX tests that require Art-Net packet capture
+test-ci:
+	@echo "Running CI-safe tests (no Art-Net required)..."
+	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) SKIP_FADE_TESTS=1 \
+		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/...
+
+## test-all: Run all tests including integration tests
+test-all:
+	@echo "Running all tests including integration..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) ARTNET_LISTEN_PORT=$(ARTNET_LISTEN_PORT) \
 		$(GO) test $(GOFLAGS) -p 1 ./...
 
@@ -139,6 +153,11 @@ help:
 	@echo "  GO_SERVER_URL      Go server endpoint (default: http://localhost:4001/graphql)"
 	@echo "  ARTNET_LISTEN_PORT Art-Net UDP port (default: 6454)"
 	@echo "  GO_SERVER_DIR      Path to lacylights-go repo (default: ../lacylights-go)"
+	@echo ""
+	@echo "Test targets:"
+	@echo "  test      - Run all contract tests (requires server with Art-Net on localhost)"
+	@echo "  test-ci   - Run CI-safe tests (no Art-Net capture required)"
+	@echo "  test-all  - Run all tests including integration tests"
 
 # =============================================================================
 # GO SERVER MANAGEMENT
@@ -146,14 +165,15 @@ help:
 
 GO_SERVER_DIR ?= ../lacylights-go
 GO_SERVER_PORT ?= 4001
-GO_SERVER_DB ?= file:./dev.db
+GO_SERVER_DB ?= file:./test.db
 
-## start-go-server: Start the Go server in background
+## start-go-server: Start the Go server in background with fresh test database
 start-go-server:
 	@echo "Starting Go server on port $(GO_SERVER_PORT)..."
 	@lsof -ti:$(GO_SERVER_PORT) | xargs kill -9 2>/dev/null || true
+	@rm -f $(GO_SERVER_DIR)/test.db 2>/dev/null || true
 	@cd $(GO_SERVER_DIR) && \
-		DATABASE_URL="$(GO_SERVER_DB)" PORT=$(GO_SERVER_PORT) ARTNET_BROADCAST=127.0.0.1 ARTNET_PORT=6455 go run ./cmd/server > /tmp/lacylights-go-server.log 2>&1 &
+		DATABASE_URL="$(GO_SERVER_DB)" PORT=$(GO_SERVER_PORT) ARTNET_BROADCAST=127.0.0.1 ARTNET_PORT=$(ARTNET_LISTEN_PORT) go run ./cmd/server > /tmp/lacylights-go-server.log 2>&1 &
 	@sleep 1
 	@$(MAKE) wait-for-server
 	@echo "Go server started. Logs at /tmp/lacylights-go-server.log"

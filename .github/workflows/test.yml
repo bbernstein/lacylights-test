@@ -51,8 +51,8 @@ jobs:
           ARTNET_ENABLED: "false"
           DATABASE_URL: "file::memory:?cache=shared"
 
-      - name: Run tests
-        run: make test
+      - name: Run CI tests
+        run: make test-ci
         env:
           GO_SERVER_URL: http://localhost:4000/graphql
 

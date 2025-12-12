@@ -846,7 +846,7 @@ func TestUnfadableChannelTypes(t *testing.T) {
 	sceneBoardID := sceneBoardResp.CreateSceneBoard.ID
 
 	// Start Art-Net capture
-	receiver := artnet.NewReceiver(":6454")
+	receiver := artnet.NewReceiver(getArtNetPort())
 
 	// Clear any existing DMX state first
 	err = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
@@ -1167,7 +1167,7 @@ func TestStrobeChannelSNAP(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Start Art-Net capture
-	receiver := artnet.NewReceiver(":6454")
+	receiver := artnet.NewReceiver(getArtNetPort())
 
 	captureCtx, captureCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer captureCancel()
@@ -1405,7 +1405,7 @@ func TestColorMacroChannelSNAP(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Start Art-Net capture
-	receiver := artnet.NewReceiver(":6454")
+	receiver := artnet.NewReceiver(getArtNetPort())
 
 	captureCtx, captureCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer captureCancel()
