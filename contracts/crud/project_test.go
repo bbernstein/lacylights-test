@@ -3,6 +3,7 @@ package crud
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -208,19 +209,33 @@ func TestProjectWithRelations(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// First get a built-in fixture definition
+	// Create a fixture definition for testing (don't rely on built-in fixtures)
 	var defResp struct {
-		FixtureDefinitions []struct {
+		CreateFixtureDefinition struct {
 			ID string `json:"id"`
-		} `json:"fixtureDefinitions"`
+		} `json:"createFixtureDefinition"`
 	}
 
-	err = client.Query(ctx, `
-		query { fixtureDefinitions(filter: { isBuiltIn: true }) { id } }
-	`, nil, &defResp)
+	err = client.Mutate(ctx, `
+		mutation CreateFixtureDefinition($input: CreateFixtureDefinitionInput!) {
+			createFixtureDefinition(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"manufacturer": "Test Relations",
+			"model":        fmt.Sprintf("Fixture %d", time.Now().UnixNano()),
+			"type":         "LED_PAR",
+			"channels": []map[string]interface{}{
+				{"name": "Dimmer", "type": "INTENSITY", "offset": 0, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+			},
+		},
+	}, &defResp)
 	require.NoError(t, err)
-	require.NotEmpty(t, defResp.FixtureDefinitions)
-	definitionID := defResp.FixtureDefinitions[0].ID
+	definitionID := defResp.CreateFixtureDefinition.ID
+	defer func() {
+		_ = client.Mutate(ctx, `mutation DeleteFixtureDefinition($id: ID!) { deleteFixtureDefinition(id: $id) }`,
+			map[string]interface{}{"id": definitionID}, nil)
+	}()
 
 	// Create fixture instance
 	var fixtureResp struct {

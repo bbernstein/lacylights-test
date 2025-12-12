@@ -102,11 +102,11 @@ test-distribution:
 # ALL TESTS
 # =============================================================================
 
-## test: Run all tests against Go server
+## test: Run all tests against Go server (serial to avoid resource contention)
 test:
 	@echo "Running all tests..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) ARTNET_LISTEN_PORT=$(ARTNET_LISTEN_PORT) \
-		$(GO) test $(GOFLAGS) ./...
+		$(GO) test $(GOFLAGS) -p 1 ./...
 
 # =============================================================================
 # LINT

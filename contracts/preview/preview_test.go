@@ -3,6 +3,7 @@ package preview
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -131,20 +132,40 @@ func TestPreviewChannelOverride(t *testing.T) {
 	projectID := createTestProject(t, client)
 	defer deleteTestProject(t, client, projectID)
 
-	// Get a built-in fixture definition first
+	// Create a fixture definition for testing (don't rely on built-in fixtures)
+	// Use unique model name to avoid conflicts
+	modelName := fmt.Sprintf("Preview Test Fixture %d", time.Now().UnixNano())
 	var defResp struct {
-		FixtureDefinitions []struct {
+		CreateFixtureDefinition struct {
 			ID string `json:"id"`
-		} `json:"fixtureDefinitions"`
+		} `json:"createFixtureDefinition"`
 	}
 
-	err := client.Query(ctx, `
-		query { fixtureDefinitions(filter: { isBuiltIn: true }) { id } }
-	`, nil, &defResp)
+	err := client.Mutate(ctx, `
+		mutation CreateFixtureDefinition($input: CreateFixtureDefinitionInput!) {
+			createFixtureDefinition(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"manufacturer": "Test",
+			"model":        modelName,
+			"type":         "LED_PAR",
+			"channels": []map[string]interface{}{
+				{"name": "Dimmer", "type": "INTENSITY", "offset": 0, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Red", "type": "RED", "offset": 1, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Green", "type": "GREEN", "offset": 2, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Blue", "type": "BLUE", "offset": 3, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+			},
+		},
+	}, &defResp)
 
 	require.NoError(t, err)
-	require.NotEmpty(t, defResp.FixtureDefinitions)
-	definitionID := defResp.FixtureDefinitions[0].ID
+	definitionID := defResp.CreateFixtureDefinition.ID
+	// Clean up the fixture definition after test
+	defer func() {
+		_ = client.Mutate(ctx, `mutation DeleteFixtureDefinition($id: ID!) { deleteFixtureDefinition(id: $id) }`,
+			map[string]interface{}{"id": definitionID}, nil)
+	}()
 
 	// Create a fixture instance
 	var fixtureResp struct {
