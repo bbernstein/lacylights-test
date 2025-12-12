@@ -22,9 +22,10 @@ type sparseChannelTestSetup struct {
 	fixtureID    string
 	sceneBoardID string
 	sceneIDs     map[string]string // name -> ID
+	fixtureIDs   []string          // multiple fixture IDs for multi-fixture tests
 }
 
-// newSparseChannelTestSetup creates test fixtures with 4-channel RGB+Dimmer fixture.
+// newSparseChannelTestSetup creates test fixtures with 4-channel Dimmer+RGB (DRGB) fixture.
 func newSparseChannelTestSetup(t *testing.T) *sparseChannelTestSetup {
 	checkArtNetEnabled(t)
 
@@ -168,6 +169,38 @@ func (s *sparseChannelTestSetup) createSparseScene(t *testing.T, name string, ch
 	require.NoError(t, err)
 	s.sceneIDs[name] = resp.CreateScene.ID
 	return resp.CreateScene.ID
+}
+
+// createMultipleFixtures creates multiple fixture instances and stores their IDs in fixtureIDs.
+func (s *sparseChannelTestSetup) createMultipleFixtures(t *testing.T, count int, startChannel int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	s.fixtureIDs = make([]string, count)
+
+	for i := 0; i < count; i++ {
+		var instanceResp struct {
+			CreateFixtureInstance struct {
+				ID string `json:"id"`
+			} `json:"createFixtureInstance"`
+		}
+
+		err := s.client.Mutate(ctx, `
+			mutation CreateFixtureInstance($input: CreateFixtureInstanceInput!) {
+				createFixtureInstance(input: $input) { id }
+			}
+		`, map[string]interface{}{
+			"input": map[string]interface{}{
+				"projectId":    s.projectID,
+				"definitionId": s.definitionID,
+				"name":         fmt.Sprintf("Light %d", i+1),
+				"universe":     1,
+				"startChannel": startChannel + (i * 9), // Space fixtures 9 channels apart
+			},
+		}, &instanceResp)
+		require.NoError(t, err)
+		s.fixtureIDs[i] = instanceResp.CreateFixtureInstance.ID
+	}
 }
 
 // TestSparseChannelsDMXOutput tests that only specified channels are output to DMX.
@@ -486,102 +519,16 @@ func TestSparseChannelsMultipleFixtures(t *testing.T) {
 		t.Skip("Skipping fade test: SKIP_FADE_TESTS is set")
 	}
 
-	checkArtNetEnabled(t)
+	setup := newSparseChannelTestSetup(t)
+	defer setup.cleanup(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	client := graphql.NewClient("")
-	resetDMXState(t, client)
-
-	// Create project
-	var projectResp struct {
-		CreateProject struct {
-			ID string `json:"id"`
-		} `json:"createProject"`
-	}
-	err := client.Mutate(ctx, `
-		mutation CreateProject($input: CreateProjectInput!) {
-			createProject(input: $input) { id }
-		}
-	`, map[string]interface{}{
-		"input": map[string]interface{}{"name": "Multi-Fixture Sparse Test"},
-	}, &projectResp)
-	require.NoError(t, err)
-	projectID := projectResp.CreateProject.ID
-	defer func() {
-		_ = client.Mutate(ctx, `mutation DeleteProject($id: ID!) { deleteProject(id: $id) }`,
-			map[string]interface{}{"id": projectID}, nil)
-	}()
-
-	// Create fixture definition
-	modelName := fmt.Sprintf("Multi RGBD %d", time.Now().UnixNano())
-	var defResp struct {
-		CreateFixtureDefinition struct {
-			ID string `json:"id"`
-		} `json:"createFixtureDefinition"`
-	}
-	err = client.Mutate(ctx, `
-		mutation CreateFixtureDefinition($input: CreateFixtureDefinitionInput!) {
-			createFixtureDefinition(input: $input) { id }
-		}
-	`, map[string]interface{}{
-		"input": map[string]interface{}{
-			"manufacturer": "Multi Sparse Test",
-			"model":        modelName,
-			"type":         "LED_PAR",
-			"channels": []map[string]interface{}{
-				{"name": "Dimmer", "type": "INTENSITY", "offset": 0, "minValue": 0, "maxValue": 255, "defaultValue": 0},
-				{"name": "Red", "type": "RED", "offset": 1, "minValue": 0, "maxValue": 255, "defaultValue": 0},
-				{"name": "Green", "type": "GREEN", "offset": 2, "minValue": 0, "maxValue": 255, "defaultValue": 0},
-				{"name": "Blue", "type": "BLUE", "offset": 3, "minValue": 0, "maxValue": 255, "defaultValue": 0},
-			},
-		},
-	}, &defResp)
-	require.NoError(t, err)
-	defID := defResp.CreateFixtureDefinition.ID
-	defer func() {
-		_ = client.Mutate(ctx, `mutation DeleteFixtureDefinition($id: ID!) { deleteFixtureDefinition(id: $id) }`,
-			map[string]interface{}{"id": defID}, nil)
-	}()
-
-	// Create two fixture instances
-	var fixture1Resp, fixture2Resp struct {
-		CreateFixtureInstance struct {
-			ID string `json:"id"`
-		} `json:"createFixtureInstance"`
-	}
-
-	err = client.Mutate(ctx, `
-		mutation CreateFixtureInstance($input: CreateFixtureInstanceInput!) {
-			createFixtureInstance(input: $input) { id }
-		}
-	`, map[string]interface{}{
-		"input": map[string]interface{}{
-			"projectId":    projectID,
-			"definitionId": defID,
-			"name":         "Light 1",
-			"universe":     1,
-			"startChannel": 1,
-		},
-	}, &fixture1Resp)
-	require.NoError(t, err)
-	fixture1ID := fixture1Resp.CreateFixtureInstance.ID
-
-	err = client.Mutate(ctx, `
-		mutation CreateFixtureInstance($input: CreateFixtureInstanceInput!) {
-			createFixtureInstance(input: $input) { id }
-		}
-	`, map[string]interface{}{
-		"input": map[string]interface{}{
-			"projectId":    projectID,
-			"definitionId": defID,
-			"name":         "Light 2",
-			"universe":     1,
-			"startChannel": 10,
-		},
-	}, &fixture2Resp)
-	require.NoError(t, err)
-	fixture2ID := fixture2Resp.CreateFixtureInstance.ID
+	// Create two fixture instances using the helper
+	setup.createMultipleFixtures(t, 2, 1)
+	fixture1ID := setup.fixtureIDs[0]
+	fixture2ID := setup.fixtureIDs[1]
 
 	// Create scene with different sparse channels for each fixture
 	var sceneResp struct {
@@ -590,13 +537,13 @@ func TestSparseChannelsMultipleFixtures(t *testing.T) {
 		} `json:"createScene"`
 	}
 
-	err = client.Mutate(ctx, `
+	err := setup.client.Mutate(ctx, `
 		mutation CreateScene($input: CreateSceneInput!) {
 			createScene(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
-			"projectId": projectID,
+			"projectId": setup.projectID,
 			"name":      "Multi-Fixture Sparse Scene",
 			"fixtureValues": []map[string]interface{}{
 				{
@@ -629,7 +576,7 @@ func TestSparseChannelsMultipleFixtures(t *testing.T) {
 	var activateResp struct {
 		SetSceneLive bool `json:"setSceneLive"`
 	}
-	err = client.Mutate(ctx, `
+	err = setup.client.Mutate(ctx, `
 		mutation SetSceneLive($sceneId: ID!) {
 			setSceneLive(sceneId: $sceneId)
 		}
