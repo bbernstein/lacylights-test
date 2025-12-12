@@ -647,7 +647,7 @@ func TestStartCueListFromCue(t *testing.T) {
 	// Ensure clean state
 	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
 
-	// Start from second cue (index 1)
+	// Start from second cue (cue number 2.0)
 	var startResp struct {
 		StartCueList bool `json:"startCueList"`
 	}
@@ -658,7 +658,7 @@ func TestStartCueListFromCue(t *testing.T) {
 		}
 	`, map[string]interface{}{
 		"cueListId":    cueListID,
-		"startFromCue": 1, // Second cue (0-indexed)
+		"startFromCue": 2, // Cue number 2.0 (Half Bright scene)
 	}, &startResp)
 
 	require.NoError(t, err)

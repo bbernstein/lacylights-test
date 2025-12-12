@@ -32,8 +32,36 @@ type LatestJSON struct {
 	Artifacts map[string]string `json:"artifacts"` // platform -> download URL
 }
 
+// skipIfS3NotConfigured checks if S3 distribution is available
+func skipIfS3NotConfigured(t *testing.T) {
+	t.Helper()
+	s3BaseURL := getS3BaseURL()
+	latestURL := fmt.Sprintf("%s/latest.json", s3BaseURL)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "HEAD", latestURL, nil)
+	if err != nil {
+		t.Skipf("Skipping S3 distribution test: could not create request: %v", err)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Skipf("Skipping S3 distribution test: S3 bucket not accessible: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Skipf("Skipping S3 distribution test: latest.json not found (status %d)", resp.StatusCode)
+	}
+}
+
 // TestLatestJSONEndpoint verifies the latest.json file is accessible and valid
 func TestLatestJSONEndpoint(t *testing.T) {
+	skipIfS3NotConfigured(t)
+
 	s3BaseURL := getS3BaseURL()
 	latestURL := fmt.Sprintf("%s/latest.json", s3BaseURL)
 
@@ -46,7 +74,7 @@ func TestLatestJSONEndpoint(t *testing.T) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "latest.json should be accessible")
 
@@ -82,6 +110,7 @@ func TestLatestJSONEndpoint(t *testing.T) {
 
 // TestBinaryDownload verifies binaries can be downloaded
 func TestBinaryDownload(t *testing.T) {
+	skipIfS3NotConfigured(t)
 	if testing.Short() {
 		t.Skip("Skipping binary download test in short mode")
 	}
@@ -113,7 +142,7 @@ func TestBinaryDownload(t *testing.T) {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode, "Binary should be downloadable")
 
@@ -131,6 +160,7 @@ func TestBinaryDownload(t *testing.T) {
 
 // TestChecksumValidation verifies checksums are correct for all platforms
 func TestChecksumValidation(t *testing.T) {
+	skipIfS3NotConfigured(t)
 	if testing.Short() {
 		t.Skip("Skipping checksum validation test in short mode")
 	}
@@ -161,6 +191,7 @@ func TestChecksumValidation(t *testing.T) {
 
 // TestBinaryExecutable verifies downloaded binary is executable
 func TestBinaryExecutable(t *testing.T) {
+	skipIfS3NotConfigured(t)
 	if testing.Short() {
 		t.Skip("Skipping binary execution test in short mode")
 	}
@@ -181,7 +212,7 @@ func TestBinaryExecutable(t *testing.T) {
 
 	// Download binary to temp file
 	tmpFile := downloadBinary(t, artifactURL)
-	defer os.Remove(tmpFile)
+	defer func() { _ = os.Remove(tmpFile) }()
 
 	// Make executable
 	err := os.Chmod(tmpFile, 0755)
@@ -200,6 +231,7 @@ func TestBinaryExecutable(t *testing.T) {
 
 // TestVersionConsistency verifies version in latest.json matches binary version
 func TestVersionConsistency(t *testing.T) {
+	skipIfS3NotConfigured(t)
 	s3BaseURL := getS3BaseURL()
 	latest := getLatestJSON(t, s3BaseURL)
 
@@ -218,6 +250,7 @@ func TestVersionConsistency(t *testing.T) {
 
 // TestAllPlatformsAvailable verifies all expected platform binaries exist
 func TestAllPlatformsAvailable(t *testing.T) {
+	skipIfS3NotConfigured(t)
 	s3BaseURL := getS3BaseURL()
 	latest := getLatestJSON(t, s3BaseURL)
 
@@ -252,7 +285,7 @@ func TestAllPlatformsAvailable(t *testing.T) {
 				client := &http.Client{Timeout: 10 * time.Second}
 				resp, err := client.Do(req)
 				if err == nil {
-					defer resp.Body.Close()
+					defer func() { _ = resp.Body.Close() }()
 					assert.Equal(t, http.StatusOK, resp.StatusCode,
 						"Binary for %s should be accessible", platform)
 				} else {
@@ -265,6 +298,7 @@ func TestAllPlatformsAvailable(t *testing.T) {
 
 // TestDistributionCDN verifies CDN/S3 configuration
 func TestDistributionCDN(t *testing.T) {
+	skipIfS3NotConfigured(t)
 	s3BaseURL := getS3BaseURL()
 	latestURL := fmt.Sprintf("%s/latest.json", s3BaseURL)
 
@@ -277,7 +311,7 @@ func TestDistributionCDN(t *testing.T) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Verify CORS headers for browser downloads (optional)
 	corsHeader := resp.Header.Get("Access-Control-Allow-Origin")
@@ -320,7 +354,7 @@ func getLatestJSON(t *testing.T, s3BaseURL string) LatestJSON {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var latest LatestJSON
 	err = json.NewDecoder(resp.Body).Decode(&latest)
@@ -347,7 +381,7 @@ func downloadAndChecksum(t *testing.T, url string) string {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	hasher := sha256.New()
 	_, err = io.Copy(hasher, resp.Body)
@@ -368,12 +402,12 @@ func downloadBinary(t *testing.T, url string) string {
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	require.NoError(t, err)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Create temp file
 	tmpFile, err := os.CreateTemp("", "lacylights-test-*")
 	require.NoError(t, err)
-	defer tmpFile.Close()
+	defer func() { _ = tmpFile.Close() }()
 
 	_, err = io.Copy(tmpFile, resp.Body)
 	require.NoError(t, err)

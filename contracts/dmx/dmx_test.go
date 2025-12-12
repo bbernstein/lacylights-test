@@ -21,11 +21,15 @@ func skipDMXTests(t *testing.T) {
 	}
 }
 
-// getArtNetPort returns the Art-Net listening port from env or default.
+// getArtNetPort returns the Art-Net listening address from env or default.
 func getArtNetPort() string {
 	port := os.Getenv("ARTNET_LISTEN_PORT")
 	if port == "" {
 		port = "6454"
+	}
+	// If running locally with localhost broadcast, bind to localhost
+	if os.Getenv("ARTNET_BROADCAST") == "127.0.0.1" {
+		return "127.0.0.1:" + port
 	}
 	return ":" + port
 }

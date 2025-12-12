@@ -170,9 +170,11 @@ func TestFixtureInstanceCRUD(t *testing.T) {
 					Universe     int    `json:"universe"`
 					StartChannel int    `json:"startChannel"`
 					Channels     []struct {
-						ID   string `json:"id"`
-						Name string `json:"name"`
-						Type string `json:"type"`
+						ID           string `json:"id"`
+						Name         string `json:"name"`
+						Type         string `json:"type"`
+						FadeBehavior string `json:"fadeBehavior"`
+						IsDiscrete   bool   `json:"isDiscrete"`
 					} `json:"channels"`
 				} `json:"fixtureInstance"`
 			}
@@ -190,6 +192,8 @@ func TestFixtureInstanceCRUD(t *testing.T) {
 							id
 							name
 							type
+							fadeBehavior
+							isDiscrete
 						}
 					}
 				}
@@ -199,6 +203,12 @@ func TestFixtureInstanceCRUD(t *testing.T) {
 			assert.Equal(t, fixtureID, readResp.FixtureInstance.ID)
 			assert.Equal(t, "Stage Left Par 1", readResp.FixtureInstance.Name)
 			assert.NotEmpty(t, readResp.FixtureInstance.Channels)
+
+			// Verify FadeBehavior is inherited from definition
+			for _, ch := range readResp.FixtureInstance.Channels {
+				assert.Contains(t, []string{"FADE", "SNAP", "SNAP_END"}, ch.FadeBehavior,
+					"Instance channel %s should have valid FadeBehavior", ch.Name)
+			}
 		})
 
 		// UPDATE

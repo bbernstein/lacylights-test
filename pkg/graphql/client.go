@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+// Note: Node server comparison functions have been removed as lacylights-node is deprecated.
+
 // Client is a GraphQL HTTP client for testing.
 type Client struct {
 	endpoint   string
@@ -35,20 +37,6 @@ func NewClient(endpoint string) *Client {
 	}
 }
 
-// NewClientFromEnv creates clients for both Node and Go servers from environment.
-func NewClientFromEnv() (nodeClient, goClient *Client) {
-	nodeURL := os.Getenv("NODE_SERVER_URL")
-	if nodeURL == "" {
-		nodeURL = "http://localhost:4000/graphql"
-	}
-
-	goURL := os.Getenv("GO_SERVER_URL")
-	if goURL == "" {
-		goURL = "http://localhost:4001/graphql"
-	}
-
-	return NewClient(nodeURL), NewClient(goURL)
-}
 
 // Request represents a GraphQL request.
 type Request struct {
@@ -237,19 +225,3 @@ func compareArrays(a, b []interface{}, path string) (bool, string) {
 	return true, ""
 }
 
-// QueryBothServers executes a query on both Node and Go servers and returns both responses.
-func QueryBothServers(ctx context.Context, query string, variables map[string]interface{}) (nodeResp, goResp json.RawMessage, err error) {
-	nodeClient, goClient := NewClientFromEnv()
-
-	nodeResp, err = nodeClient.ExecuteRaw(ctx, query, variables)
-	if err != nil {
-		return nil, nil, fmt.Errorf("node server error: %w", err)
-	}
-
-	goResp, err = goClient.ExecuteRaw(ctx, query, variables)
-	if err != nil {
-		return nil, nil, fmt.Errorf("go server error: %w", err)
-	}
-
-	return nodeResp, goResp, nil
-}

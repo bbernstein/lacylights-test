@@ -1,0 +1,75 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout test repo
+        uses: actions/checkout@v4
+
+      - name: Checkout lacylights-go server
+        uses: actions/checkout@v4
+        with:
+          repository: bbernstein/lacylights-go
+          path: lacylights-go
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: |
+            go.sum
+            lacylights-go/go.sum
+
+      - name: Build lacylights-go server
+        working-directory: lacylights-go
+        run: |
+          go mod download
+          go build -o lacylights-go ./cmd/server
+
+      - name: Start lacylights-go server
+        working-directory: lacylights-go
+        run: |
+          ./lacylights-go &
+          echo "Waiting for server to start..."
+          sleep 5
+          # Verify server is running
+          curl -sf http://localhost:4000/graphql -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"query":"{ __typename }"}' || exit 1
+          echo "Server is ready"
+        env:
+          PORT: "4000"
+          ARTNET_ENABLED: "false"
+          DATABASE_URL: "file:./test.db"
+
+      - name: Run CI tests
+        run: make test-ci
+        env:
+          GO_SERVER_URL: http://localhost:4000/graphql
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: ./...

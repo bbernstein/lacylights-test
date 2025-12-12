@@ -3,6 +3,7 @@ package fade
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"os"
 	"strings"
@@ -99,6 +100,7 @@ func resetDMXState(t *testing.T, client *graphql.Client) {
 type testSetup struct {
 	client       *graphql.Client
 	projectID    string
+	definitionID string
 	fixtureID    string
 	sceneBoardID string
 	scenes       map[string]string // name -> ID
@@ -140,19 +142,35 @@ func newTestSetup(t *testing.T) *testSetup {
 	require.NoError(t, err)
 	setup.projectID = projectResp.CreateProject.ID
 
-	// Get a built-in fixture definition first
+	// Create a fixture definition for testing (don't rely on built-in fixtures)
+	// Use timestamp in model name to ensure uniqueness across test runs
 	var defResp struct {
-		FixtureDefinitions []struct {
+		CreateFixtureDefinition struct {
 			ID string `json:"id"`
-		} `json:"fixtureDefinitions"`
+		} `json:"createFixtureDefinition"`
 	}
 
-	err = client.Query(ctx, `
-		query { fixtureDefinitions(filter: { isBuiltIn: true }) { id } }
-	`, nil, &defResp)
+	modelName := fmt.Sprintf("RGB Fixture %d", time.Now().UnixNano())
+	err = client.Mutate(ctx, `
+		mutation CreateFixtureDefinition($input: CreateFixtureDefinitionInput!) {
+			createFixtureDefinition(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"manufacturer": "Test Fade",
+			"model":        modelName,
+			"type":         "LED_PAR",
+			"channels": []map[string]interface{}{
+				{"name": "Dimmer", "type": "INTENSITY", "offset": 0, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Red", "type": "RED", "offset": 1, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Green", "type": "GREEN", "offset": 2, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Blue", "type": "BLUE", "offset": 3, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+			},
+		},
+	}, &defResp)
 	require.NoError(t, err)
-	require.NotEmpty(t, defResp.FixtureDefinitions)
-	definitionID := defResp.FixtureDefinitions[0].ID
+	definitionID := defResp.CreateFixtureDefinition.ID
+	setup.definitionID = definitionID
 
 	// Create a fixture instance
 	var fixtureResp struct {
@@ -215,6 +233,15 @@ func (s *testSetup) cleanup(t *testing.T) {
 			deleteProject(id: $id)
 		}
 	`, map[string]interface{}{"id": s.projectID}, nil)
+
+	// Delete fixture definition
+	if s.definitionID != "" {
+		_ = s.client.Mutate(ctx, `
+			mutation DeleteFixtureDefinition($id: ID!) {
+				deleteFixtureDefinition(id: $id)
+			}
+		`, map[string]interface{}{"id": s.definitionID}, nil)
+	}
 }
 
 // createScene creates a scene with the given name and channel values
@@ -335,8 +362,8 @@ func TestActivateSceneWithFade(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene at full brightness
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create scene at full brightness (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 
 	// Ensure clean state
 	setup.fadeToBlack(t, 0)
@@ -348,24 +375,25 @@ func TestActivateSceneWithFade(t *testing.T) {
 	// Query DMX output during fade
 	time.Sleep(100 * time.Millisecond)
 	midFadeOutput := setup.getDMXOutput(t)
-	t.Logf("Mid-fade value (0.1s): %v", midFadeOutput[:3])
+	t.Logf("Mid-fade value (0.1s): %v", midFadeOutput[:4])
 
 	// Wait for fade to complete
 	time.Sleep(2500 * time.Millisecond)
 	finalOutput := setup.getDMXOutput(t)
 
-	// Verify all channels are at full
-	assert.Equal(t, 255, finalOutput[0], "Red channel should be at 255")
-	assert.Equal(t, 255, finalOutput[1], "Green channel should be at 255")
-	assert.Equal(t, 255, finalOutput[2], "Blue channel should be at 255")
+	// Verify all channels are at full (Dimmer, Red, Green, Blue)
+	assert.Equal(t, 255, finalOutput[0], "Dimmer channel should be at 255")
+	assert.Equal(t, 255, finalOutput[1], "Red channel should be at 255")
+	assert.Equal(t, 255, finalOutput[2], "Green channel should be at 255")
+	assert.Equal(t, 255, finalOutput[3], "Blue channel should be at 255")
 }
 
 func TestFadeToBlack(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create and activate scene immediately
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create and activate scene immediately (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 	setup.activateScene(t, sceneID, 0)
 	time.Sleep(100 * time.Millisecond)
 
@@ -387,17 +415,18 @@ func TestFadeToBlack(t *testing.T) {
 	finalOutput := setup.getDMXOutput(t)
 
 	// Should be at 0
-	assert.Equal(t, 0, finalOutput[0], "Red channel should be at 0")
-	assert.Equal(t, 0, finalOutput[1], "Green channel should be at 0")
-	assert.Equal(t, 0, finalOutput[2], "Blue channel should be at 0")
+	assert.Equal(t, 0, finalOutput[0], "Dimmer channel should be at 0")
+	assert.Equal(t, 0, finalOutput[1], "Red channel should be at 0")
+	assert.Equal(t, 0, finalOutput[2], "Green channel should be at 0")
+	assert.Equal(t, 0, finalOutput[3], "Blue channel should be at 0")
 }
 
 func TestInstantFade(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene
-	sceneID := setup.createScene(t, "Full", []int{255, 128, 64})
+	// Create scene (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 128, 64})
 
 	// Ensure blackout
 	setup.fadeToBlack(t, 0)
@@ -409,9 +438,10 @@ func TestInstantFade(t *testing.T) {
 
 	// Should be immediately at target values
 	output := setup.getDMXOutput(t)
-	assert.Equal(t, 255, output[0], "Red should be 255")
-	assert.Equal(t, 128, output[1], "Green should be 128")
-	assert.Equal(t, 64, output[2], "Blue should be 64")
+	assert.Equal(t, 255, output[0], "Dimmer should be 255")
+	assert.Equal(t, 255, output[1], "Red should be 255")
+	assert.Equal(t, 128, output[2], "Green should be 128")
+	assert.Equal(t, 64, output[3], "Blue should be 64")
 }
 
 // ============================================================================
@@ -422,9 +452,9 @@ func TestFadeInterruptionWithNewScene(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create two scenes
-	scene1ID := setup.createScene(t, "Full", []int{255, 255, 255})
-	scene2ID := setup.createScene(t, "Half", []int{128, 128, 128})
+	// Create two scenes (Dimmer, Red, Green, Blue)
+	scene1ID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	scene2ID := setup.createScene(t, "Half", []int{128, 128, 128, 128})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
@@ -449,8 +479,8 @@ func TestFadeInterruptionWithFadeToBlack(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene at full
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create scene at full (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
@@ -479,10 +509,10 @@ func TestMultipleRapidInterruptions(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create several scenes
-	scene1ID := setup.createScene(t, "Red", []int{255, 0, 0})
-	scene2ID := setup.createScene(t, "Green", []int{0, 255, 0})
-	scene3ID := setup.createScene(t, "Blue", []int{0, 0, 255})
+	// Create several scenes (Dimmer, Red, Green, Blue)
+	scene1ID := setup.createScene(t, "Red", []int{255, 255, 0, 0})
+	scene2ID := setup.createScene(t, "Green", []int{255, 0, 255, 0})
+	scene3ID := setup.createScene(t, "Blue", []int{255, 0, 0, 255})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
@@ -498,11 +528,12 @@ func TestMultipleRapidInterruptions(t *testing.T) {
 	// Wait for final fade to complete
 	time.Sleep(1500 * time.Millisecond)
 
-	// Should be at scene 3 (blue)
+	// Should be at scene 3 (blue) - Dimmer=255, Red=0, Green=0, Blue=255
 	output := setup.getDMXOutput(t)
-	assert.InDelta(t, 0, output[0], 10, "Red should be 0")
-	assert.InDelta(t, 0, output[1], 10, "Green should be 0")
-	assert.InDelta(t, 255, output[2], 10, "Blue should be 255")
+	assert.InDelta(t, 255, output[0], 10, "Dimmer should be 255")
+	assert.InDelta(t, 0, output[1], 10, "Red should be 0")
+	assert.InDelta(t, 0, output[2], 10, "Green should be 0")
+	assert.InDelta(t, 255, output[3], 10, "Blue should be 255")
 }
 
 // ============================================================================
@@ -513,8 +544,8 @@ func TestFadeProgressionLinear(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene at full
-	sceneID := setup.createScene(t, "Full", []int{255, 0, 0})
+	// Create scene at full (Dimmer=255, Red=255, Green=0, Blue=0)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 0, 0})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
@@ -568,13 +599,13 @@ func TestFadeCompletesToExactValue(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Test various target values
+	// Test various target values (Dimmer, Red, Green, Blue)
 	testValues := [][]int{
-		{255, 255, 255},
-		{128, 128, 128},
-		{64, 128, 192},
-		{1, 1, 1},
-		{254, 127, 63},
+		{255, 255, 255, 255},
+		{128, 128, 128, 128},
+		{255, 64, 128, 192},
+		{1, 1, 1, 1},
+		{255, 254, 127, 63},
 	}
 
 	for _, values := range testValues {
@@ -590,9 +621,10 @@ func TestFadeCompletesToExactValue(t *testing.T) {
 		time.Sleep(1500 * time.Millisecond)
 
 		output := setup.getDMXOutput(t)
-		assert.Equal(t, values[0], output[0], "Red should be exact")
-		assert.Equal(t, values[1], output[1], "Green should be exact")
-		assert.Equal(t, values[2], output[2], "Blue should be exact")
+		assert.Equal(t, values[0], output[0], "Dimmer should be exact")
+		assert.Equal(t, values[1], output[1], "Red should be exact")
+		assert.Equal(t, values[2], output[2], "Green should be exact")
+		assert.Equal(t, values[3], output[3], "Blue should be exact")
 	}
 }
 
@@ -604,18 +636,18 @@ func TestCrossFadeBetweenScenes(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create two different color scenes
-	scene1ID := setup.createScene(t, "Red", []int{255, 0, 0})
-	scene2ID := setup.createScene(t, "Blue", []int{0, 0, 255})
+	// Create two different color scenes (Dimmer, Red, Green, Blue)
+	scene1ID := setup.createScene(t, "Red", []int{255, 255, 0, 0})
+	scene2ID := setup.createScene(t, "Blue", []int{255, 0, 0, 255})
 
 	// Start at scene 1 (instant)
 	setup.activateScene(t, scene1ID, 0)
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify red
+	// Verify red (Dimmer=255, Red=255, Green=0, Blue=0)
 	output := setup.getDMXOutput(t)
-	assert.Equal(t, 255, output[0], "Should start at red")
-	assert.Equal(t, 0, output[2], "Should start with no blue")
+	assert.Equal(t, 255, output[1], "Should start at red (output[1]=Red)")
+	assert.Equal(t, 0, output[3], "Should start with no blue (output[3]=Blue)")
 
 	// Cross-fade to scene 2
 	setup.activateScene(t, scene2ID, 2.0)
@@ -623,19 +655,19 @@ func TestCrossFadeBetweenScenes(t *testing.T) {
 	// Check midpoint - should have both colors
 	time.Sleep(1000 * time.Millisecond)
 	midOutput := setup.getDMXOutput(t)
-	t.Logf("Mid-crossfade: R=%d, B=%d", midOutput[0], midOutput[2])
+	t.Logf("Mid-crossfade: R=%d, B=%d", midOutput[1], midOutput[3])
 
 	// Both should be mid-range during crossfade
-	assert.True(t, midOutput[0] > 50 && midOutput[0] < 200, "Red should be fading out")
-	assert.True(t, midOutput[2] > 50 && midOutput[2] < 200, "Blue should be fading in")
+	assert.True(t, midOutput[1] > 50 && midOutput[1] < 200, "Red should be fading out")
+	assert.True(t, midOutput[3] > 50 && midOutput[3] < 200, "Blue should be fading in")
 
 	// Wait for completion
 	time.Sleep(1500 * time.Millisecond)
 	finalOutput := setup.getDMXOutput(t)
 
-	// Should be blue now
-	assert.InDelta(t, 0, finalOutput[0], 5, "Red should be 0")
-	assert.InDelta(t, 255, finalOutput[2], 5, "Blue should be 255")
+	// Should be blue now (Dimmer=255, Red=0, Green=0, Blue=255)
+	assert.InDelta(t, 0, finalOutput[1], 5, "Red should be 0")
+	assert.InDelta(t, 255, finalOutput[3], 5, "Blue should be 255")
 }
 
 // ============================================================================
@@ -649,10 +681,10 @@ func TestCueListFadeTransitions(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scenes
-	scene1ID := setup.createScene(t, "Scene 1", []int{255, 0, 0})
-	scene2ID := setup.createScene(t, "Scene 2", []int{0, 255, 0})
-	scene3ID := setup.createScene(t, "Scene 3", []int{0, 0, 255})
+	// Create scenes (Dimmer, Red, Green, Blue)
+	scene1ID := setup.createScene(t, "Scene 1", []int{255, 255, 0, 0})
+	scene2ID := setup.createScene(t, "Scene 2", []int{255, 0, 255, 0})
+	scene3ID := setup.createScene(t, "Scene 3", []int{255, 0, 0, 255})
 
 	// Create cue list
 	var cueListResp struct {
@@ -706,7 +738,7 @@ func TestCueListFadeTransitions(t *testing.T) {
 	// Wait for first cue fade
 	time.Sleep(1500 * time.Millisecond)
 	output := setup.getDMXOutput(t)
-	assert.InDelta(t, 255, output[0], 5, "Should be at scene 1 (red)")
+	assert.InDelta(t, 255, output[1], 5, "Should be at scene 1 (red) - output[1]=Red")
 
 	// Go to next cue
 	// Go server requires cueListId parameter and returns Boolean!
@@ -720,7 +752,7 @@ func TestCueListFadeTransitions(t *testing.T) {
 	// Wait for transition
 	time.Sleep(1500 * time.Millisecond)
 	output = setup.getDMXOutput(t)
-	assert.InDelta(t, 255, output[1], 5, "Should be at scene 2 (green)")
+	assert.InDelta(t, 255, output[2], 5, "Should be at scene 2 (green) - output[2]=Green")
 
 	// Stop cue list
 	// Go server requires cueListId parameter and returns Boolean!
@@ -739,8 +771,8 @@ func TestCueFadeTimeOverride(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create scene (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 
 	// Create cue list with long default fade
 	var cueListResp struct {
@@ -819,24 +851,29 @@ func TestCueFadeTimeOverride(t *testing.T) {
 // Preview Mode Fade Tests
 // ============================================================================
 
-func TestPreviewModeFadeDoesNotAffectLive(t *testing.T) {
+// TestPreviewOverridesLiveAndRestoresOnCancel tests that preview mode
+// outputs to live DMX (via overrides) and restores live values when cancelled.
+// This is the expected behavior - lighting designers need to see preview on actual lights.
+func TestPreviewOverridesLiveAndRestoresOnCancel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create two scenes
-	liveSceneID := setup.createScene(t, "Live", []int{255, 0, 0})
-	previewSceneID := setup.createScene(t, "Preview", []int{0, 255, 0})
+	// Create two scenes (Dimmer, Red, Green, Blue)
+	liveSceneID := setup.createScene(t, "Live", []int{255, 255, 0, 0})
+	previewSceneID := setup.createScene(t, "Preview", []int{255, 0, 255, 0})
 
 	// Set live scene
 	setup.activateScene(t, liveSceneID, 0)
 	time.Sleep(100 * time.Millisecond)
 
-	// Verify live output
+	// Verify live output (Dimmer=255, Red=255, Green=0, Blue=0)
 	output := setup.getDMXOutput(t)
-	assert.Equal(t, 255, output[0], "Live should be red")
+	assert.Equal(t, 255, output[0], "Dimmer should be 255")
+	assert.Equal(t, 255, output[1], "Red should be 255")
+	assert.Equal(t, 0, output[2], "Green should be 0")
 
 	// Start preview session
 	var sessionResp struct {
@@ -865,15 +902,17 @@ func TestPreviewModeFadeDoesNotAffectLive(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	// Give time for any potential leak
+	// Give time for preview to apply
 	time.Sleep(500 * time.Millisecond)
 
-	// Live output should still be red, not affected by preview
+	// Preview SHOULD override live DMX output so designers can see it on actual lights
+	// (Dimmer=255, Red=0, Green=255, Blue=0)
 	output = setup.getDMXOutput(t)
-	assert.Equal(t, 255, output[0], "Live should still be red")
-	assert.Equal(t, 0, output[1], "Live should not have preview green")
+	assert.Equal(t, 255, output[0], "Dimmer should be 255 (preview)")
+	assert.Equal(t, 0, output[1], "Red should be 0 (preview overrides live)")
+	assert.Equal(t, 255, output[2], "Green should be 255 (preview overrides live)")
 
-	// End preview session
+	// Cancel preview session
 	// Go server uses cancelPreviewSession instead of endPreviewSession
 	err = setup.client.Mutate(ctx, `
 		mutation CancelPreview($sessionId: ID!) {
@@ -882,9 +921,15 @@ func TestPreviewModeFadeDoesNotAffectLive(t *testing.T) {
 	`, map[string]interface{}{"sessionId": sessionID}, nil)
 	require.NoError(t, err)
 
-	// Verify live unchanged
+	// Give time for overrides to clear
+	time.Sleep(200 * time.Millisecond)
+
+	// Live values should be restored after preview cancelled
+	// (Dimmer=255, Red=255, Green=0, Blue=0)
 	output = setup.getDMXOutput(t)
-	assert.Equal(t, 255, output[0], "Live should still be red after preview end")
+	assert.Equal(t, 255, output[0], "Dimmer should be 255 after preview cancelled")
+	assert.Equal(t, 255, output[1], "Red should be 255 after preview cancelled (live restored)")
+	assert.Equal(t, 0, output[2], "Green should be 0 after preview cancelled (live restored)")
 }
 
 func TestPreviewSessionOutputValues(t *testing.T) {
@@ -894,8 +939,8 @@ func TestPreviewSessionOutputValues(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene
-	sceneID := setup.createScene(t, "Test", []int{128, 64, 32})
+	// Create scene (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Test", []int{255, 128, 64, 32})
 
 	// Start preview session
 	var sessionResp struct {
@@ -958,10 +1003,11 @@ func TestPreviewSessionOutputValues(t *testing.T) {
 	}
 	require.NotEmpty(t, universe1Channels, "Should have universe 1 output")
 
-	// Verify preview output matches scene values
-	assert.Equal(t, 128, universe1Channels[0], "Preview red should be 128")
-	assert.Equal(t, 64, universe1Channels[1], "Preview green should be 64")
-	assert.Equal(t, 32, universe1Channels[2], "Preview blue should be 32")
+	// Verify preview output matches scene values (Dimmer=255, Red=128, Green=64, Blue=32)
+	assert.Equal(t, 255, universe1Channels[0], "Preview dimmer should be 255")
+	assert.Equal(t, 128, universe1Channels[1], "Preview red should be 128")
+	assert.Equal(t, 64, universe1Channels[2], "Preview green should be 64")
+	assert.Equal(t, 32, universe1Channels[3], "Preview blue should be 32")
 
 	// Cleanup
 	// Go server uses cancelPreviewSession instead of endPreviewSession
@@ -988,8 +1034,8 @@ func TestFadeCapturedViaArtNet(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create scene (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 
 	// Blackout and clear frames
 	setup.fadeToBlack(t, 0)
@@ -1042,8 +1088,8 @@ func TestArtNetFrameRate(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create scene (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 
 	// Blackout
 	setup.fadeToBlack(t, 0)
@@ -1079,15 +1125,15 @@ func TestFadeWithZeroChannelChange(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene at specific value
-	scene1ID := setup.createScene(t, "Initial", []int{128, 128, 128})
+	// Create scene at specific value (Dimmer, Red, Green, Blue)
+	scene1ID := setup.createScene(t, "Initial", []int{128, 128, 128, 128})
 
 	// Activate scene instantly
 	setup.activateScene(t, scene1ID, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Duplicate the scene (same values)
-	scene2ID := setup.createScene(t, "Same", []int{128, 128, 128})
+	scene2ID := setup.createScene(t, "Same", []int{128, 128, 128, 128})
 
 	// Fade to same values (should still work, just no change)
 	setup.activateScene(t, scene2ID, 1.0)
@@ -1102,7 +1148,8 @@ func TestVeryShortFade(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create scene (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
@@ -1122,7 +1169,8 @@ func TestVeryLongFade(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create scene (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
@@ -1166,9 +1214,9 @@ func TestFadeFromPartialValue(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scenes
-	halfSceneID := setup.createScene(t, "Half", []int{128, 128, 128})
-	fullSceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create scenes (Dimmer, Red, Green, Blue)
+	halfSceneID := setup.createScene(t, "Half", []int{128, 128, 128, 128})
+	fullSceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 
 	// Start at half
 	setup.activateScene(t, halfSceneID, 0)
@@ -1198,9 +1246,9 @@ func TestFadeDownward(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scenes
-	fullSceneID := setup.createScene(t, "Full", []int{255, 255, 255})
-	quarterSceneID := setup.createScene(t, "Quarter", []int{64, 64, 64})
+	// Create scenes (Dimmer, Red, Green, Blue)
+	fullSceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	quarterSceneID := setup.createScene(t, "Quarter", []int{64, 64, 64, 64})
 
 	// Start at full
 	setup.activateScene(t, fullSceneID, 0)
@@ -1240,8 +1288,8 @@ func TestEasingTypes(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene and cue list
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255})
+	// Create scene and cue list (Dimmer, Red, Green, Blue)
+	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
 
 	var cueListResp struct {
 		CreateCueList struct {
@@ -1432,14 +1480,12 @@ func TestFadeAllChannels4Universes(t *testing.T) {
 		{2200 * time.Millisecond, 20, 15},
 	}
 
-	lastSampleTime := fadeStart
 	for _, sample := range samples {
-		// Wait relative to last sample
+		// Wait relative to fade start
 		sleepTime := sample.delay - time.Since(fadeStart)
 		if sleepTime > 0 {
 			time.Sleep(sleepTime)
 		}
-		lastSampleTime = time.Now()
 
 		// Sample all universes
 		for universe := 1; universe <= numUniverses; universe++ {
@@ -1465,7 +1511,6 @@ func TestFadeAllChannels4Universes(t *testing.T) {
 					"Channel 1 and 512 should be similar during fade")
 			}
 		}
-		_ = lastSampleTime // suppress unused variable warning
 	}
 
 	// Wait for fade to complete
@@ -1547,30 +1592,46 @@ func TestFadeUpAllChannels4Universes(t *testing.T) {
 	require.NoError(t, err)
 	projectID := projectResp.CreateProject.ID
 
-	// Clean up at end
+	// Clean up at end - note: defID is declared later, so we close over it
+	var defID string
 	defer func() {
 		_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
 		_ = client.Mutate(ctx, `mutation DeleteProject($id: ID!) { deleteProject(id: $id) }`,
 			map[string]interface{}{"id": projectID}, nil)
+		if defID != "" {
+			_ = client.Mutate(ctx, `mutation DeleteFixtureDefinition($id: ID!) { deleteFixtureDefinition(id: $id) }`,
+				map[string]interface{}{"id": defID}, nil)
+		}
 	}()
 
-	// Get a built-in fixture definition
-	// Go server uses 'channels' array, so we count its length for channelsPerFixture
+	// Create a fixture definition for testing (don't rely on built-in fixtures)
+	// Use timestamp in model name to ensure uniqueness
+	const channelsPerFixture = 4 // RGB + Dimmer
 	var defResp struct {
-		FixtureDefinitions []struct {
-			ID       string `json:"id"`
-			Channels []struct {
-				Name string `json:"name"`
-			} `json:"channels"`
-		} `json:"fixtureDefinitions"`
+		CreateFixtureDefinition struct {
+			ID string `json:"id"`
+		} `json:"createFixtureDefinition"`
 	}
-	err = client.Query(ctx, `
-		query { fixtureDefinitions(filter: { isBuiltIn: true }) { id channels { name } } }
-	`, nil, &defResp)
+	modelName := fmt.Sprintf("Load Test Fixture %d", time.Now().UnixNano())
+	err = client.Mutate(ctx, `
+		mutation CreateFixtureDefinition($input: CreateFixtureDefinitionInput!) {
+			createFixtureDefinition(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"manufacturer": "Test Load",
+			"model":        modelName,
+			"type":         "LED_PAR",
+			"channels": []map[string]interface{}{
+				{"name": "Dimmer", "type": "INTENSITY", "offset": 0, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Red", "type": "RED", "offset": 1, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Green", "type": "GREEN", "offset": 2, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Blue", "type": "BLUE", "offset": 3, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+			},
+		},
+	}, &defResp)
 	require.NoError(t, err)
-	require.NotEmpty(t, defResp.FixtureDefinitions)
-	defID := defResp.FixtureDefinitions[0].ID
-	channelsPerFixture := len(defResp.FixtureDefinitions[0].Channels)
+	defID = defResp.CreateFixtureDefinition.ID
 
 	// Create fixtures across all 4 universes
 	var fixtureIDs []string
