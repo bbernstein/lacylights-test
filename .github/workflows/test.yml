@@ -49,7 +49,7 @@ jobs:
         env:
           PORT: "4000"
           ARTNET_ENABLED: "false"
-          DATABASE_URL: "file::memory:?cache=shared"
+          DATABASE_URL: "file:./test.db"
 
       - name: Run CI tests
         run: make test-ci
