@@ -625,11 +625,11 @@ func TestSceneCloneAndDuplicate(t *testing.T) {
 		assert.NotEqual(t, originalSceneID, cloneResp.CloneScene.ID)
 		assert.Equal(t, "Cloned Scene", cloneResp.CloneScene.Name)
 
-		// TODO: BACKEND BUG - cloneScene is not properly copying sparse channel data
+		// KNOWN BACKEND ISSUE: cloneScene is not properly copying sparse channel data.
 		// The original scene has the fixture values with channels (verified above),
-		// but the cloned scene returns empty fixtureValues array.
-		// This needs to be fixed in lacylights-go backend.
-		// For now, we skip the channel value assertions.
+		// but the cloned scene returns an empty fixtureValues array.
+		// This needs to be fixed in the lacylights-go backend.
+		// As a workaround, we skip the channel value assertions in this test.
 		if len(cloneResp.CloneScene.FixtureValues) == 0 {
 			t.Skip("KNOWN ISSUE: cloneScene not returning fixture values with sparse channels")
 			return
