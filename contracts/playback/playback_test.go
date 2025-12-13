@@ -140,7 +140,10 @@ func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context
 			"projectId": projectID,
 			"name":      "Full Bright",
 			"fixtureValues": []map[string]interface{}{
-				{"fixtureId": fixtureID, "channelValues": []int{255}},
+				{
+					"fixtureId": fixtureID,
+					"channels":  []map[string]int{{"offset": 0, "value": 255}},
+				},
 			},
 		},
 	}, &scene1Resp)
@@ -163,7 +166,10 @@ func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context
 			"projectId": projectID,
 			"name":      "Half Bright",
 			"fixtureValues": []map[string]interface{}{
-				{"fixtureId": fixtureID, "channelValues": []int{128}},
+				{
+					"fixtureId": fixtureID,
+					"channels":  []map[string]int{{"offset": 0, "value": 128}},
+				},
 			},
 		},
 	}, &scene2Resp)

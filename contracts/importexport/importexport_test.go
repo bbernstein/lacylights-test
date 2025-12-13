@@ -145,7 +145,10 @@ func setupExportTest(t *testing.T, client *graphql.Client, ctx context.Context) 
 			"projectId": projectID,
 			"name":      "Export Test Scene",
 			"fixtureValues": []map[string]interface{}{
-				{"fixtureId": fixtureID, "channelValues": []int{255}},
+				{
+					"fixtureId": fixtureID,
+					"channels":  []map[string]int{{"offset": 0, "value": 255}},
+				},
 			},
 		},
 	}, &sceneResp)

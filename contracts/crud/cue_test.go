@@ -803,7 +803,12 @@ func TestCueListWithSceneDetails(t *testing.T) {
 			"projectId": projectID,
 			"name":      "Scene Details Test Scene",
 			"fixtureValues": []map[string]interface{}{
-				{"fixtureId": fixtureID, "channelValues": []int{200}},
+				{
+					"fixtureId": fixtureID,
+					"channels": []map[string]interface{}{
+						{"offset": 0, "value": 200},
+					},
+				},
 			},
 		},
 	}, &sceneResp)
@@ -864,7 +869,10 @@ func TestCueListWithSceneDetails(t *testing.T) {
 							ID   string `json:"id"`
 							Name string `json:"name"`
 						} `json:"fixture"`
-						ChannelValues []int `json:"channelValues"`
+						Channels []struct {
+							Offset int `json:"offset"`
+							Value  int `json:"value"`
+						} `json:"channels"`
 					} `json:"fixtureValues"`
 				} `json:"scene"`
 			} `json:"cues"`
@@ -886,7 +894,10 @@ func TestCueListWithSceneDetails(t *testing.T) {
 								id
 								name
 							}
-							channelValues
+							channels {
+								offset
+								value
+							}
 						}
 					}
 				}
@@ -903,7 +914,9 @@ func TestCueListWithSceneDetails(t *testing.T) {
 	assert.Equal(t, sceneID, cue.Scene.ID)
 	assert.Len(t, cue.Scene.FixtureValues, 1)
 	assert.Equal(t, fixtureID, cue.Scene.FixtureValues[0].Fixture.ID)
-	assert.Equal(t, []int{200}, cue.Scene.FixtureValues[0].ChannelValues)
+	assert.Len(t, cue.Scene.FixtureValues[0].Channels, 1)
+	assert.Equal(t, 0, cue.Scene.FixtureValues[0].Channels[0].Offset)
+	assert.Equal(t, 200, cue.Scene.FixtureValues[0].Channels[0].Value)
 }
 
 // TestSearchCues tests searching cues within a cue list.
