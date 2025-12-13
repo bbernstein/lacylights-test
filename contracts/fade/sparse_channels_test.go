@@ -25,7 +25,7 @@ type sparseChannelTestSetup struct {
 	fixtureIDs   []string          // multiple fixture IDs for multi-fixture tests
 }
 
-// newSparseChannelTestSetup creates test fixtures with 4-channel Dimmer+RGB (DRGB) fixture.
+// newSparseChannelTestSetup creates test fixtures with 4-channel DRGB (Dimmer, Red, Green, Blue) fixture.
 func newSparseChannelTestSetup(t *testing.T) *sparseChannelTestSetup {
 	checkArtNetEnabled(t)
 
@@ -57,7 +57,7 @@ func newSparseChannelTestSetup(t *testing.T) *sparseChannelTestSetup {
 	setup.projectID = projectResp.CreateProject.ID
 
 	// Create fixture definition with 4 channels (Dimmer, Red, Green, Blue)
-	modelName := fmt.Sprintf("RGBD Test %d", time.Now().UnixNano())
+	modelName := fmt.Sprintf("DRGB Test %d", time.Now().UnixNano())
 	var defResp struct {
 		CreateFixtureDefinition struct {
 			ID string `json:"id"`
@@ -97,7 +97,7 @@ func newSparseChannelTestSetup(t *testing.T) *sparseChannelTestSetup {
 		"input": map[string]interface{}{
 			"projectId":    setup.projectID,
 			"definitionId": setup.definitionID,
-			"name":         "Test RGBD Light",
+			"name":         "Test DRGB Light",
 			"universe":     1,
 			"startChannel": 1,
 		},
@@ -195,7 +195,7 @@ func (s *sparseChannelTestSetup) createMultipleFixtures(t *testing.T, count int,
 				"definitionId": s.definitionID,
 				"name":         fmt.Sprintf("Light %d", i+1),
 				"universe":     1,
-				"startChannel": startChannel + (i * 9), // Space fixtures 9 channels apart
+				"startChannel": startChannel + (i * 9), // Separate fixtures by 9 DMX channels (leaving gaps between fixtures)
 			},
 		}, &instanceResp)
 		require.NoError(t, err)

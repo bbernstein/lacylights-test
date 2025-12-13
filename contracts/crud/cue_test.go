@@ -803,9 +803,12 @@ func TestCueListWithSceneDetails(t *testing.T) {
 			"projectId": projectID,
 			"name":      "Scene Details Test Scene",
 			"fixtureValues": []map[string]interface{}{
-				{"fixtureId": fixtureID, "channels": []map[string]interface{}{
-					{"offset": 0, "value": 200},
-				}},
+				{
+					"fixtureId": fixtureID,
+					"channels": []map[string]interface{}{
+						{"offset": 0, "value": 200},
+					},
+				},
 			},
 		},
 	}, &sceneResp)

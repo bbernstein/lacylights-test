@@ -614,9 +614,10 @@ func TestSparseChannelsSceneOrder(t *testing.T) {
 	// Verify sceneOrder is preserved with sparse channels
 	for _, fv := range createResp.CreateScene.FixtureValues {
 		assert.NotNil(t, fv.SceneOrder, "Scene order should be set")
-		if fv.Fixture.ID == fixture1ID {
+		switch fv.Fixture.ID {
+		case fixture1ID:
 			assert.Equal(t, 2, *fv.SceneOrder)
-		} else if fv.Fixture.ID == fixture2ID {
+		case fixture2ID:
 			assert.Equal(t, 1, *fv.SceneOrder)
 		}
 	}
