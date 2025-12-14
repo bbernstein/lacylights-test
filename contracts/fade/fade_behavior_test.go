@@ -493,6 +493,12 @@ func (s *fadeBehaviorTestSetup) createScene(t *testing.T, name string, channelVa
 		} `json:"createScene"`
 	}
 
+	// Convert dense channelValues to sparse channels format
+	channels := make([]map[string]int, len(channelValues))
+	for i, value := range channelValues {
+		channels[i] = map[string]int{"offset": i, "value": value}
+	}
+
 	err := s.client.Mutate(ctx, `
 		mutation CreateScene($input: CreateSceneInput!) {
 			createScene(input: $input) { id }
@@ -503,8 +509,8 @@ func (s *fadeBehaviorTestSetup) createScene(t *testing.T, name string, channelVa
 			"name":      name,
 			"fixtureValues": []map[string]interface{}{
 				{
-					"fixtureId":     s.fixtureID,
-					"channelValues": channelValues,
+					"fixtureId": s.fixtureID,
+					"channels":  channels,
 				},
 			},
 		},
@@ -816,8 +822,15 @@ func TestUnfadableChannelTypes(t *testing.T) {
 			"projectId": projectID,
 			"fixtureValues": []map[string]interface{}{
 				{
-					"fixtureId":     fixtureID,
-					"channelValues": []int{255, 255, 255, 255, 255, 255}, // All channels to 255
+					"fixtureId": fixtureID,
+					"channels": []map[string]int{
+						{"offset": 0, "value": 255},
+						{"offset": 1, "value": 255},
+						{"offset": 2, "value": 255},
+						{"offset": 3, "value": 255},
+						{"offset": 4, "value": 255},
+						{"offset": 5, "value": 255},
+					},
 				},
 			},
 		},
@@ -1113,7 +1126,13 @@ func TestStrobeChannelSNAP(t *testing.T) {
 			"name":      "Strobe Off",
 			"projectId": projectID,
 			"fixtureValues": []map[string]interface{}{
-				{"fixtureId": fixtureID, "channelValues": []int{255, 0}}, // Dimmer=255, Strobe=0
+				{
+					"fixtureId": fixtureID,
+					"channels": []map[string]int{
+						{"offset": 0, "value": 255}, // Dimmer=255
+						{"offset": 1, "value": 0},   // Strobe=0
+					},
+				},
 			},
 		},
 	}, &sceneOffResp)
@@ -1130,7 +1149,13 @@ func TestStrobeChannelSNAP(t *testing.T) {
 			"name":      "Strobe On",
 			"projectId": projectID,
 			"fixtureValues": []map[string]interface{}{
-				{"fixtureId": fixtureID, "channelValues": []int{255, 200}}, // Dimmer=255, Strobe=200
+				{
+					"fixtureId": fixtureID,
+					"channels": []map[string]int{
+						{"offset": 0, "value": 255}, // Dimmer=255
+						{"offset": 1, "value": 200}, // Strobe=200
+					},
+				},
 			},
 		},
 	}, &sceneOnResp)
@@ -1352,7 +1377,13 @@ func TestColorMacroChannelSNAP(t *testing.T) {
 			"name":      "Red Preset",
 			"projectId": projectID,
 			"fixtureValues": []map[string]interface{}{
-				{"fixtureId": fixtureID, "channelValues": []int{255, 25}}, // Dimmer=255, ColorMacro=25 (Red)
+				{
+					"fixtureId": fixtureID,
+					"channels": []map[string]int{
+						{"offset": 0, "value": 255}, // Dimmer=255
+						{"offset": 1, "value": 25},  // ColorMacro=25 (Red)
+					},
+				},
 			},
 		},
 	}, &sceneRedResp)
@@ -1368,7 +1399,13 @@ func TestColorMacroChannelSNAP(t *testing.T) {
 			"name":      "Blue Preset",
 			"projectId": projectID,
 			"fixtureValues": []map[string]interface{}{
-				{"fixtureId": fixtureID, "channelValues": []int{255, 125}}, // Dimmer=255, ColorMacro=125 (Blue)
+				{
+					"fixtureId": fixtureID,
+					"channels": []map[string]int{
+						{"offset": 0, "value": 255}, // Dimmer=255
+						{"offset": 1, "value": 125}, // ColorMacro=125 (Blue)
+					},
+				},
 			},
 		},
 	}, &sceneBlueResp)

@@ -255,6 +255,12 @@ func (s *testSetup) createScene(t *testing.T, name string, channelValues []int) 
 		} `json:"createScene"`
 	}
 
+	// Convert dense channelValues to sparse channels format
+	channels := make([]map[string]int, len(channelValues))
+	for i, value := range channelValues {
+		channels[i] = map[string]int{"offset": i, "value": value}
+	}
+
 	// Create scene with fixture values included
 	err := s.client.Mutate(ctx, `
 		mutation CreateScene($input: CreateSceneInput!) {
@@ -266,8 +272,8 @@ func (s *testSetup) createScene(t *testing.T, name string, channelValues []int) 
 			"name":      name,
 			"fixtureValues": []map[string]interface{}{
 				{
-					"fixtureId":     s.fixtureID,
-					"channelValues": channelValues,
+					"fixtureId": s.fixtureID,
+					"channels":  channels,
 				},
 			},
 		},
@@ -1670,14 +1676,15 @@ func TestFadeUpAllChannels4Universes(t *testing.T) {
 
 	// Create fixture values at 255 for all fixtures
 	fixtureValues := make([]map[string]interface{}, len(fixtureIDs))
-	channelValues := make([]int, channelsPerFixture)
-	for i := range channelValues {
-		channelValues[i] = 255
+	// Create sparse channels format (all channels set to 255)
+	channels := make([]map[string]int, channelsPerFixture)
+	for i := 0; i < channelsPerFixture; i++ {
+		channels[i] = map[string]int{"offset": i, "value": 255}
 	}
 	for i, fid := range fixtureIDs {
 		fixtureValues[i] = map[string]interface{}{
-			"fixtureId":     fid,
-			"channelValues": channelValues,
+			"fixtureId": fid,
+			"channels":  channels,
 		}
 	}
 

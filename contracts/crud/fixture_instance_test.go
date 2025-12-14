@@ -540,8 +540,10 @@ func TestFixtureInstanceUsage(t *testing.T) {
 			"name":      "Usage Test Scene",
 			"fixtureValues": []map[string]interface{}{
 				{
-					"fixtureId":     fixtureID,
-					"channelValues": []int{255},
+					"fixtureId": fixtureID,
+					"channels": []map[string]interface{}{
+						{"offset": 0, "value": 255},
+					},
 				},
 			},
 		},
