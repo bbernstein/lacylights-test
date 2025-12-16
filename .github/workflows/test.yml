@@ -40,12 +40,19 @@ jobs:
         run: |
           ./lacylights-go &
           echo "Waiting for server to start..."
-          sleep 5
-          # Verify server is running
-          curl -sf http://localhost:4000/graphql -X POST \
-            -H "Content-Type: application/json" \
-            -d '{"query":"{ __typename }"}' || exit 1
-          echo "Server is ready"
+          # Wait up to 30 seconds for server to be ready
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4000/graphql -X POST \
+              -H "Content-Type: application/json" \
+              -d '{"query":"{ __typename }"}' > /dev/null 2>&1; then
+              echo "Server is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: Server not ready yet..."
+            sleep 1
+          done
+          echo "Server failed to start after 30 seconds"
+          exit 1
         env:
           PORT: "4000"
           ARTNET_ENABLED: "false"

@@ -1,0 +1,246 @@
+// Package settings provides contract tests for system settings.
+package settings
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/bbernstein/lacylights-test/pkg/graphql"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestFadeUpdateRateQuery tests querying the fade_update_rate_hz setting.
+//
+// GraphQL Schema Assumptions:
+// - Query: setting(key: String!): Setting
+// - Setting type has: key: String!, value: String!
+// - Default fade_update_rate_hz is "60" (60Hz)
+func TestFadeUpdateRateQuery(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	// First ensure the setting exists by creating/updating it
+	var createResp struct {
+		UpdateSetting struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"updateSetting"`
+	}
+
+	err := client.Mutate(ctx, `
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
+				key
+				value
+			}
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate_hz",
+			"value": "60",
+		},
+	}, &createResp)
+
+	require.NoError(t, err)
+
+	// Now query the setting
+	var resp struct {
+		Setting struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"setting"`
+	}
+
+	err = client.Query(ctx, `
+		query GetSetting($key: String!) {
+			setting(key: $key) {
+				key
+				value
+			}
+		}
+	`, map[string]interface{}{
+		"key": "fade_update_rate_hz",
+	}, &resp)
+
+	require.NoError(t, err)
+	assert.Equal(t, "fade_update_rate_hz", resp.Setting.Key)
+
+	// Should have a value
+	assert.NotEmpty(t, resp.Setting.Value, "fade_update_rate_hz should have a value")
+
+	// Value should be parseable as a number (we'll validate range in integration tests)
+	// For contract tests, we just verify the structure is correct
+}
+
+// TestFadeUpdateRateMutation tests updating the fade_update_rate_hz setting.
+//
+// GraphQL Schema Assumptions:
+// - Mutation: updateSetting(input: UpdateSettingInput!): Setting
+// - UpdateSettingInput has: key: String!, value: String!
+// - Setting type has: key: String!, value: String!
+func TestFadeUpdateRateMutation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	// First, get the current value to restore later
+	var getResp struct {
+		Setting struct {
+			Value string `json:"value"`
+		} `json:"setting"`
+	}
+
+	err := client.Query(ctx, `
+		query GetSetting($key: String!) {
+			setting(key: $key) {
+				value
+			}
+		}
+	`, map[string]interface{}{
+		"key": "fade_update_rate_hz",
+	}, &getResp)
+
+	require.NoError(t, err)
+	originalValue := getResp.Setting.Value
+
+	// Update to a new value
+	var updateResp struct {
+		UpdateSetting struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"updateSetting"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
+				key
+				value
+			}
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate_hz",
+			"value": "30",
+		},
+	}, &updateResp)
+
+	require.NoError(t, err)
+	assert.Equal(t, "fade_update_rate_hz", updateResp.UpdateSetting.Key)
+	assert.Equal(t, "30", updateResp.UpdateSetting.Value)
+
+	// Verify the change persisted by reading it back
+	var verifyResp struct {
+		Setting struct {
+			Value string `json:"value"`
+		} `json:"setting"`
+	}
+
+	err = client.Query(ctx, `
+		query GetSetting($key: String!) {
+			setting(key: $key) {
+				value
+			}
+		}
+	`, map[string]interface{}{
+		"key": "fade_update_rate_hz",
+	}, &verifyResp)
+
+	require.NoError(t, err)
+	assert.Equal(t, "30", verifyResp.Setting.Value)
+
+	// Restore original value
+	var restoreResp struct {
+		UpdateSetting struct {
+			Value string `json:"value"`
+		} `json:"updateSetting"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
+				value
+			}
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate_hz",
+			"value": originalValue,
+		},
+	}, &restoreResp)
+
+	require.NoError(t, err)
+	assert.Equal(t, originalValue, restoreResp.UpdateSetting.Value)
+}
+
+// TestAllSettingsQuery tests querying all settings at once.
+//
+// GraphQL Schema Assumptions:
+// - Query: settings: [Setting!]!
+// - Setting type has: key: String!, value: String!
+func TestAllSettingsQuery(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	// First ensure the setting exists by creating/updating it
+	var createResp struct {
+		UpdateSetting struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"updateSetting"`
+	}
+
+	err := client.Mutate(ctx, `
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
+				key
+				value
+			}
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate_hz",
+			"value": "60",
+		},
+	}, &createResp)
+
+	require.NoError(t, err)
+
+	// Now query all settings
+	var resp struct {
+		Settings []struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"settings"`
+	}
+
+	err = client.Query(ctx, `
+		query {
+			settings {
+				key
+				value
+			}
+		}
+	`, nil, &resp)
+
+	require.NoError(t, err)
+	assert.NotNil(t, resp.Settings)
+
+	// Verify fade_update_rate_hz is in the list
+	found := false
+	for _, setting := range resp.Settings {
+		if setting.Key == "fade_update_rate_hz" {
+			found = true
+			assert.NotEmpty(t, setting.Value)
+			break
+		}
+	}
+	assert.True(t, found, "fade_update_rate_hz should be in settings list")
+}
