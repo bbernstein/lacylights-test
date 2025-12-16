@@ -125,7 +125,7 @@ func TestFadeUpdateRateValidation(t *testing.T) {
 			}, &updateResp)
 
 			require.NoError(t, err)
-			assert.Equal(t, "fade_update_rate", updateResp.UpdateSetting.Key)
+			assert.Equal(t, "fade_update_rate_hz", updateResp.UpdateSetting.Key)
 			assert.Equal(t, rate, updateResp.UpdateSetting.Value)
 
 			// Verify it persisted
