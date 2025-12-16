@@ -14,7 +14,8 @@ LacyLights Test Suite is a Go-based testing framework for validating the LacyLig
 - `make test-dmx` - Run DMX behavior tests
 - `make test-fade` - Run fade behavior tests
 - `make test-preview` - Run preview mode tests
-- `make test-integration` - Run integration tests
+- `make test-settings` - Run settings contract tests
+- `make test-integration` - Run integration tests (includes fade rate tests)
 - `make test-distribution` - Run S3 distribution tests
 - `make lint` - Run linters
 
@@ -44,8 +45,9 @@ LacyLights Test Suite is a Go-based testing framework for validating the LacyLig
 - `contracts/ofl/` - OFL (Open Fixture Library) import tests
 - `contracts/playback/` - Cue list playback tests
 - `contracts/preview/` - Preview session tests
+- `contracts/settings/` - System settings tests (fade update rate, etc.)
 - `contracts/importexport/` - Import/export functionality tests
-- `integration/` - S3 distribution tests
+- `integration/` - S3 distribution tests and fade rate integration tests
 
 ## Testing Philosophy
 

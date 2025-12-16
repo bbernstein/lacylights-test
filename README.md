@@ -28,8 +28,9 @@ lacylights-test/
 │   ├── ofl/         # OFL import tests
 │   ├── playback/    # Cue list playback tests
 │   ├── preview/     # Preview mode tests
+│   ├── settings/    # System settings tests
 │   └── importexport/# Import/export tests
-└── integration/     # S3 distribution tests
+└── integration/     # S3 distribution tests and fade rate integration tests
 ```
 
 ## Prerequisites
@@ -48,7 +49,8 @@ make test-contracts   # API contract tests
 make test-dmx         # DMX behavior tests (requires Art-Net)
 make test-fade        # Fade behavior tests (includes Art-Net capture)
 make test-preview     # Preview mode tests
-make test-integration # Integration tests
+make test-settings    # Settings contract tests
+make test-integration # Integration tests (includes fade rate tests)
 make test-distribution # S3 binary distribution tests
 
 # Run linters
@@ -103,7 +105,12 @@ Test preview session creation, channel overrides, commit, and cancel.
 ### 7. Playback Tests (`contracts/playback/`)
 Test cue list playback, navigation, and timing.
 
-### 8. Integration Tests (`integration/`)
+### 8. Settings Tests (`contracts/settings/`)
+Test system settings configuration:
+- Fade update rate configuration (default 60Hz)
+- Settings persistence and validation
+
+### 9. Integration Tests (`integration/`)
 - S3 distribution tests for binary downloads
 - Checksum validation
 - Platform availability verification

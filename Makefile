@@ -10,7 +10,7 @@ GO_SERVER_URL ?= http://localhost:4001/graphql
 ARTNET_LISTEN_PORT ?= 6454
 
 .PHONY: all build clean test test-ci test-all test-contracts test-contracts-go \
-        test-dmx test-fade test-preview lint help deps \
+        test-dmx test-fade test-preview test-settings lint help deps \
         start-go-server stop-go-server wait-for-server test-load run-load-tests
 
 # =============================================================================
@@ -85,6 +85,15 @@ test-preview:
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) $(GO) test $(GOFLAGS) ./contracts/preview/...
 
 # =============================================================================
+# SETTINGS TESTS
+# =============================================================================
+
+## test-settings: Run settings contract tests
+test-settings:
+	@echo "Running settings contract tests..."
+	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) $(GO) test $(GOFLAGS) ./contracts/settings/...
+
+# =============================================================================
 # INTEGRATION TESTS
 # =============================================================================
 
@@ -114,7 +123,7 @@ test:
 test-ci:
 	@echo "Running CI-safe tests (no Art-Net required)..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) SKIP_FADE_TESTS=1 \
-		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/...
+		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/... ./contracts/settings/...
 
 ## test-all: Run all tests including integration tests
 test-all:
