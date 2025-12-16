@@ -85,14 +85,16 @@ func TestFadeUpdateRateValidation(t *testing.T) {
 		}
 
 		_ = client.Mutate(context.Background(), `
-			mutation UpdateSetting($key: String!, $value: String!) {
-				updateSetting(key: $key, value: $value) {
+			mutation UpdateSetting($input: UpdateSettingInput!) {
+				updateSetting(input: $input) {
 					value
 				}
 			}
 		`, map[string]interface{}{
-			"key":   "fade_update_rate",
-			"value": originalValue,
+			"input": map[string]interface{}{
+				"key":   "fade_update_rate",
+				"value": originalValue,
+			},
 		}, &restoreResp)
 	}()
 
@@ -109,15 +111,17 @@ func TestFadeUpdateRateValidation(t *testing.T) {
 			}
 
 			err := client.Mutate(ctx, `
-				mutation UpdateSetting($key: String!, $value: String!) {
-					updateSetting(key: $key, value: $value) {
+				mutation UpdateSetting($input: UpdateSettingInput!) {
+					updateSetting(input: $input) {
 						key
 						value
 					}
 				}
 			`, map[string]interface{}{
-				"key":   "fade_update_rate",
-				"value": rate,
+				"input": map[string]interface{}{
+					"key":   "fade_update_rate",
+					"value": rate,
+				},
 			}, &updateResp)
 
 			require.NoError(t, err)
@@ -169,14 +173,16 @@ func TestFadeUpdateRateValidation(t *testing.T) {
 			}
 
 			err := client.Mutate(ctx, `
-				mutation UpdateSetting($key: String!, $value: String!) {
-					updateSetting(key: $key, value: $value) {
+				mutation UpdateSetting($input: UpdateSettingInput!) {
+					updateSetting(input: $input) {
 						value
 					}
 				}
 			`, map[string]interface{}{
-				"key":   "fade_update_rate",
-				"value": tc.value,
+				"input": map[string]interface{}{
+					"key":   "fade_update_rate",
+					"value": tc.value,
+				},
 			}, &updateResp)
 
 			if tc.expectError {
@@ -233,14 +239,16 @@ func TestFadeUpdateRatePersistence(t *testing.T) {
 	}
 
 	err = client.Mutate(ctx, `
-		mutation UpdateSetting($key: String!, $value: String!) {
-			updateSetting(key: $key, value: $value) {
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
 				value
 			}
 		}
 	`, map[string]interface{}{
-		"key":   "fade_update_rate",
-		"value": testValue,
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate",
+			"value": testValue,
+		},
 	}, &updateResp)
 
 	require.NoError(t, err)
@@ -279,14 +287,16 @@ func TestFadeUpdateRatePersistence(t *testing.T) {
 	}
 
 	err = client.Mutate(ctx, `
-		mutation UpdateSetting($key: String!, $value: String!) {
-			updateSetting(key: $key, value: $value) {
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
 				value
 			}
 		}
 	`, map[string]interface{}{
-		"key":   "fade_update_rate",
-		"value": originalValue,
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate",
+			"value": originalValue,
+		},
 	}, &restoreResp)
 
 	require.NoError(t, err)

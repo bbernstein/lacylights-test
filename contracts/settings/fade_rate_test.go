@@ -54,7 +54,8 @@ func TestFadeUpdateRateQuery(t *testing.T) {
 // TestFadeUpdateRateMutation tests updating the fade_update_rate setting.
 //
 // GraphQL Schema Assumptions:
-// - Mutation: updateSetting(key: String!, value: String!): Setting
+// - Mutation: updateSetting(input: UpdateSettingInput!): Setting
+// - UpdateSettingInput has: key: String!, value: String!
 // - Setting type has: key: String!, value: String!
 func TestFadeUpdateRateMutation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -91,15 +92,17 @@ func TestFadeUpdateRateMutation(t *testing.T) {
 	}
 
 	err = client.Mutate(ctx, `
-		mutation UpdateSetting($key: String!, $value: String!) {
-			updateSetting(key: $key, value: $value) {
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
 				key
 				value
 			}
 		}
 	`, map[string]interface{}{
-		"key":   "fade_update_rate",
-		"value": "30",
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate",
+			"value": "30",
+		},
 	}, &updateResp)
 
 	require.NoError(t, err)
@@ -134,14 +137,16 @@ func TestFadeUpdateRateMutation(t *testing.T) {
 	}
 
 	err = client.Mutate(ctx, `
-		mutation UpdateSetting($key: String!, $value: String!) {
-			updateSetting(key: $key, value: $value) {
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
 				value
 			}
 		}
 	`, map[string]interface{}{
-		"key":   "fade_update_rate",
-		"value": originalValue,
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate",
+			"value": originalValue,
+		},
 	}, &restoreResp)
 
 	require.NoError(t, err)

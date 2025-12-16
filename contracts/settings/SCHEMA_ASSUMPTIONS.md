@@ -54,15 +54,20 @@ query {
 ### Update Setting
 
 ```graphql
-mutation UpdateSetting($key: String!, $value: String!) {
-  updateSetting(key: $key, value: $value): Setting!
+input UpdateSettingInput {
+  key: String!
+  value: String!
+}
+
+mutation UpdateSetting($input: UpdateSettingInput!) {
+  updateSetting(input: $input): Setting!
 }
 ```
 
 **Example:**
 ```graphql
 mutation {
-  updateSetting(key: "fade_update_rate", value: "30") {
+  updateSetting(input: { key: "fade_update_rate", value: "30" }) {
     key
     value
   }
@@ -111,12 +116,14 @@ var updateResp struct {
 }
 
 client.Mutate(ctx, `
-    mutation UpdateSetting($key: String!, $value: String!) {
-        updateSetting(key: $key, value: $value) { value }
+    mutation UpdateSetting($input: UpdateSettingInput!) {
+        updateSetting(input: $input) { value }
     }
 `, map[string]interface{}{
-    "key": "fade_update_rate",
-    "value": "45",
+    "input": map[string]interface{}{
+        "key": "fade_update_rate",
+        "value": "45",
+    },
 }, &updateResp)
 ```
 
