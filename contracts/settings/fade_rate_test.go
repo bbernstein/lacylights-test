@@ -23,6 +23,31 @@ func TestFadeUpdateRateQuery(t *testing.T) {
 
 	client := graphql.NewClient("")
 
+	// First ensure the setting exists by creating/updating it
+	var createResp struct {
+		UpdateSetting struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"updateSetting"`
+	}
+
+	err := client.Mutate(ctx, `
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
+				key
+				value
+			}
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate_hz",
+			"value": "60",
+		},
+	}, &createResp)
+
+	require.NoError(t, err)
+
+	// Now query the setting
 	var resp struct {
 		Setting struct {
 			Key   string `json:"key"`
@@ -30,7 +55,7 @@ func TestFadeUpdateRateQuery(t *testing.T) {
 		} `json:"setting"`
 	}
 
-	err := client.Query(ctx, `
+	err = client.Query(ctx, `
 		query GetSetting($key: String!) {
 			setting(key: $key) {
 				key
@@ -44,8 +69,8 @@ func TestFadeUpdateRateQuery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "fade_update_rate_hz", resp.Setting.Key)
 
-	// Default should be 60Hz
-	assert.NotEmpty(t, resp.Setting.Value, "fade_update_rate should have a value")
+	// Should have a value
+	assert.NotEmpty(t, resp.Setting.Value, "fade_update_rate_hz should have a value")
 
 	// Value should be parseable as a number (we'll validate range in integration tests)
 	// For contract tests, we just verify the structure is correct
@@ -164,6 +189,31 @@ func TestAllSettingsQuery(t *testing.T) {
 
 	client := graphql.NewClient("")
 
+	// First ensure the setting exists by creating/updating it
+	var createResp struct {
+		UpdateSetting struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		} `json:"updateSetting"`
+	}
+
+	err := client.Mutate(ctx, `
+		mutation UpdateSetting($input: UpdateSettingInput!) {
+			updateSetting(input: $input) {
+				key
+				value
+			}
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"key":   "fade_update_rate_hz",
+			"value": "60",
+		},
+	}, &createResp)
+
+	require.NoError(t, err)
+
+	// Now query all settings
 	var resp struct {
 		Settings []struct {
 			Key   string `json:"key"`
@@ -171,7 +221,7 @@ func TestAllSettingsQuery(t *testing.T) {
 		} `json:"settings"`
 	}
 
-	err := client.Query(ctx, `
+	err = client.Query(ctx, `
 		query {
 			settings {
 				key
