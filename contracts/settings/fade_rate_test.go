@@ -11,12 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestFadeUpdateRateQuery tests querying the fade_update_rate setting.
+// TestFadeUpdateRateQuery tests querying the fade_update_rate_hz setting.
 //
 // GraphQL Schema Assumptions:
 // - Query: setting(key: String!): Setting
 // - Setting type has: key: String!, value: String!
-// - Default fade_update_rate is "60" (60Hz)
+// - Default fade_update_rate_hz is "60" (60Hz)
 func TestFadeUpdateRateQuery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -38,11 +38,11 @@ func TestFadeUpdateRateQuery(t *testing.T) {
 			}
 		}
 	`, map[string]interface{}{
-		"key": "fade_update_rate",
+		"key": "fade_update_rate_hz",
 	}, &resp)
 
 	require.NoError(t, err)
-	assert.Equal(t, "fade_update_rate", resp.Setting.Key)
+	assert.Equal(t, "fade_update_rate_hz", resp.Setting.Key)
 
 	// Default should be 60Hz
 	assert.NotEmpty(t, resp.Setting.Value, "fade_update_rate should have a value")
@@ -51,7 +51,7 @@ func TestFadeUpdateRateQuery(t *testing.T) {
 	// For contract tests, we just verify the structure is correct
 }
 
-// TestFadeUpdateRateMutation tests updating the fade_update_rate setting.
+// TestFadeUpdateRateMutation tests updating the fade_update_rate_hz setting.
 //
 // GraphQL Schema Assumptions:
 // - Mutation: updateSetting(input: UpdateSettingInput!): Setting
@@ -77,7 +77,7 @@ func TestFadeUpdateRateMutation(t *testing.T) {
 			}
 		}
 	`, map[string]interface{}{
-		"key": "fade_update_rate",
+		"key": "fade_update_rate_hz",
 	}, &getResp)
 
 	require.NoError(t, err)
@@ -100,13 +100,13 @@ func TestFadeUpdateRateMutation(t *testing.T) {
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
-			"key":   "fade_update_rate",
+			"key":   "fade_update_rate_hz",
 			"value": "30",
 		},
 	}, &updateResp)
 
 	require.NoError(t, err)
-	assert.Equal(t, "fade_update_rate", updateResp.UpdateSetting.Key)
+	assert.Equal(t, "fade_update_rate_hz", updateResp.UpdateSetting.Key)
 	assert.Equal(t, "30", updateResp.UpdateSetting.Value)
 
 	// Verify the change persisted by reading it back
@@ -123,7 +123,7 @@ func TestFadeUpdateRateMutation(t *testing.T) {
 			}
 		}
 	`, map[string]interface{}{
-		"key": "fade_update_rate",
+		"key": "fade_update_rate_hz",
 	}, &verifyResp)
 
 	require.NoError(t, err)
@@ -144,7 +144,7 @@ func TestFadeUpdateRateMutation(t *testing.T) {
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
-			"key":   "fade_update_rate",
+			"key":   "fade_update_rate_hz",
 			"value": originalValue,
 		},
 	}, &restoreResp)
@@ -183,14 +183,14 @@ func TestAllSettingsQuery(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, resp.Settings)
 
-	// Verify fade_update_rate is in the list
+	// Verify fade_update_rate_hz is in the list
 	found := false
 	for _, setting := range resp.Settings {
-		if setting.Key == "fade_update_rate" {
+		if setting.Key == "fade_update_rate_hz" {
 			found = true
 			assert.NotEmpty(t, setting.Value)
 			break
 		}
 	}
-	assert.True(t, found, "fade_update_rate should be in settings list")
+	assert.True(t, found, "fade_update_rate_hz should be in settings list")
 }

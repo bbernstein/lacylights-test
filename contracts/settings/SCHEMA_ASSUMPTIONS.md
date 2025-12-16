@@ -24,7 +24,7 @@ query GetSetting($key: String!) {
 **Example:**
 ```graphql
 query {
-  setting(key: "fade_update_rate") {
+  setting(key: "fade_update_rate_hz") {
     key
     value
   }
@@ -67,7 +67,7 @@ mutation UpdateSetting($input: UpdateSettingInput!) {
 **Example:**
 ```graphql
 mutation {
-  updateSetting(input: { key: "fade_update_rate", value: "30" }) {
+  updateSetting(input: { key: "fade_update_rate_hz", value: "30" }) {
     key
     value
   }
@@ -76,7 +76,7 @@ mutation {
 
 ## Fade Update Rate Setting
 
-- **Key:** `fade_update_rate`
+- **Key:** `fade_update_rate_hz`
 - **Default Value:** `"60"` (60Hz)
 - **Valid Range:** Typically 1-120 (Hz)
 - **Storage:** String representation of integer value
@@ -103,7 +103,7 @@ client.Query(ctx, `
     query GetSetting($key: String!) {
         setting(key: $key) { value }
     }
-`, map[string]interface{}{"key": "fade_update_rate"}, &resp)
+`, map[string]interface{}{"key": "fade_update_rate_hz"}, &resp)
 
 rate, _ := strconv.Atoi(resp.Setting.Value)
 // Use rate value...
@@ -121,7 +121,7 @@ client.Mutate(ctx, `
     }
 `, map[string]interface{}{
     "input": map[string]interface{}{
-        "key": "fade_update_rate",
+        "key": "fade_update_rate_hz",
         "value": "45",
     },
 }, &updateResp)

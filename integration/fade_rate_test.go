@@ -34,11 +34,11 @@ func TestFadeUpdateRateDefault(t *testing.T) {
 			}
 		}
 	`, map[string]interface{}{
-		"key": "fade_update_rate",
+		"key": "fade_update_rate_hz",
 	}, &resp)
 
 	require.NoError(t, err)
-	assert.Equal(t, "fade_update_rate", resp.Setting.Key)
+	assert.Equal(t, "fade_update_rate_hz", resp.Setting.Key)
 
 	// Default should be 60Hz
 	rate, err := strconv.Atoi(resp.Setting.Value)
@@ -70,7 +70,7 @@ func TestFadeUpdateRateValidation(t *testing.T) {
 			}
 		}
 	`, map[string]interface{}{
-		"key": "fade_update_rate",
+		"key": "fade_update_rate_hz",
 	}, &getResp)
 
 	require.NoError(t, err)
@@ -92,7 +92,7 @@ func TestFadeUpdateRateValidation(t *testing.T) {
 			}
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
-				"key":   "fade_update_rate",
+				"key":   "fade_update_rate_hz",
 				"value": originalValue,
 			},
 		}, &restoreResp)
@@ -119,7 +119,7 @@ func TestFadeUpdateRateValidation(t *testing.T) {
 				}
 			`, map[string]interface{}{
 				"input": map[string]interface{}{
-					"key":   "fade_update_rate",
+					"key":   "fade_update_rate_hz",
 					"value": rate,
 				},
 			}, &updateResp)
@@ -142,7 +142,7 @@ func TestFadeUpdateRateValidation(t *testing.T) {
 					}
 				}
 			`, map[string]interface{}{
-				"key": "fade_update_rate",
+				"key": "fade_update_rate_hz",
 			}, &verifyResp)
 
 			require.NoError(t, err)
@@ -180,7 +180,7 @@ func TestFadeUpdateRateValidation(t *testing.T) {
 				}
 			`, map[string]interface{}{
 				"input": map[string]interface{}{
-					"key":   "fade_update_rate",
+					"key":   "fade_update_rate_hz",
 					"value": tc.value,
 				},
 			}, &updateResp)
@@ -220,7 +220,7 @@ func TestFadeUpdateRatePersistence(t *testing.T) {
 			}
 		}
 	`, map[string]interface{}{
-		"key": "fade_update_rate",
+		"key": "fade_update_rate_hz",
 	}, &getResp)
 
 	require.NoError(t, err)
@@ -246,7 +246,7 @@ func TestFadeUpdateRatePersistence(t *testing.T) {
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
-			"key":   "fade_update_rate",
+			"key":   "fade_update_rate_hz",
 			"value": testValue,
 		},
 	}, &updateResp)
@@ -269,7 +269,7 @@ func TestFadeUpdateRatePersistence(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"key": "fade_update_rate",
+			"key": "fade_update_rate_hz",
 		}, &verifyResp)
 
 		require.NoError(t, err)
@@ -294,7 +294,7 @@ func TestFadeUpdateRatePersistence(t *testing.T) {
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
-			"key":   "fade_update_rate",
+			"key":   "fade_update_rate_hz",
 			"value": originalValue,
 		},
 	}, &restoreResp)
