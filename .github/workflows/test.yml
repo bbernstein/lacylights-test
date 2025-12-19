@@ -5,19 +5,52 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      lacylights-test-branch:
+        description: 'Branch of lacylights-test to test'
+        required: false
+        default: 'main'
+        type: string
+      lacylights-go-branch:
+        description: 'Branch of lacylights-go to test against'
+        required: false
+        default: 'main'
+        type: string
+      lacylights-fe-branch:
+        description: 'Branch of lacylights-fe to test (future use)'
+        required: false
+        default: 'main'
+        type: string
+      lacylights-mcp-branch:
+        description: 'Branch of lacylights-mcp to test (future use)'
+        required: false
+        default: 'main'
+        type: string
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Display test configuration
+        run: |
+          echo "Testing configuration:"
+          echo "  lacylights-test: ${{ github.event.inputs.lacylights-test-branch || github.ref }}"
+          echo "  lacylights-go: ${{ github.event.inputs.lacylights-go-branch || 'main' }}"
+          echo "  lacylights-fe: ${{ github.event.inputs.lacylights-fe-branch || 'main' }} (future use)"
+          echo "  lacylights-mcp: ${{ github.event.inputs.lacylights-mcp-branch || 'main' }} (future use)"
+
       - name: Checkout test repo
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.lacylights-test-branch || github.ref }}
 
       - name: Checkout lacylights-go server
         uses: actions/checkout@v4
         with:
           repository: bbernstein/lacylights-go
+          ref: ${{ github.event.inputs.lacylights-go-branch || 'main' }}
           path: lacylights-go
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -69,6 +102,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.lacylights-test-branch || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
