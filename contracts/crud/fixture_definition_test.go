@@ -154,7 +154,7 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 		assert.Equal(t, modelName, createResp.CreateFixtureDefinition.Model)
 		assert.Equal(t, "LED_PAR", createResp.CreateFixtureDefinition.Type)
 		assert.False(t, createResp.CreateFixtureDefinition.IsBuiltIn)
-		assert.Len(t, createResp.CreateFixtureDefinition.Channels, 4)
+		assert.Len(t, createResp.CreateFixtureDefinition.Channels, 8)
 
 		// Verify FadeBehavior is returned for channels
 		for _, ch := range createResp.CreateFixtureDefinition.Channels {
