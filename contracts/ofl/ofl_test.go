@@ -300,9 +300,16 @@ func TestOFLImportedFixturesHaveFadeBehavior(t *testing.T) {
 				{"name": "Red", "type": "RED", "offset": 1, "minValue": 0, "maxValue": 255, "defaultValue": 0},
 				{"name": "Green", "type": "GREEN", "offset": 2, "minValue": 0, "maxValue": 255, "defaultValue": 0},
 				{"name": "Blue", "type": "BLUE", "offset": 3, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Cyan", "type": "CYAN", "offset": 4, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Magenta", "type": "MAGENTA", "offset": 5, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Yellow", "type": "YELLOW", "offset": 6, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Lime", "type": "LIME", "offset": 7, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Indigo", "type": "INDIGO", "offset": 8, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Cold White", "type": "COLD_WHITE", "offset": 9, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Warm White", "type": "WARM_WHITE", "offset": 10, "minValue": 0, "maxValue": 255, "defaultValue": 0},
 				// Channels that should SNAP (when isDiscrete is set)
-				{"name": "Strobe", "type": "OTHER", "offset": 4, "minValue": 0, "maxValue": 255, "defaultValue": 0, "isDiscrete": true},
-				{"name": "Color Macro", "type": "OTHER", "offset": 5, "minValue": 0, "maxValue": 255, "defaultValue": 0, "isDiscrete": true},
+				{"name": "Strobe", "type": "OTHER", "offset": 11, "minValue": 0, "maxValue": 255, "defaultValue": 0, "isDiscrete": true},
+				{"name": "Color Macro", "type": "OTHER", "offset": 12, "minValue": 0, "maxValue": 255, "defaultValue": 0, "isDiscrete": true},
 			},
 		},
 	}, &createResp)
@@ -331,7 +338,7 @@ func TestOFLImportedFixturesHaveFadeBehavior(t *testing.T) {
 	}
 
 	// Check that continuous channels have FADE behavior
-	for _, name := range []string{"Dimmer", "Red", "Green", "Blue"} {
+	for _, name := range []string{"Dimmer", "Red", "Green", "Blue", "Cyan", "Magenta", "Yellow", "Lime", "Indigo", "Cold White", "Warm White"} {
 		ch, ok := channelMap[name]
 		require.True(t, ok, "Channel %s should exist", name)
 		assert.Containsf(t, []string{"FADE", "SNAP", "SNAP_END"}, ch.FadeBehavior,

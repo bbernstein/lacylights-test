@@ -100,9 +100,45 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 						"fadeBehavior": "FADE",
 					},
 					{
+						"name":         "Cyan",
+						"type":         "CYAN",
+						"offset":       3,
+						"defaultValue": 0,
+						"minValue":     0,
+						"maxValue":     255,
+						"fadeBehavior": "FADE",
+					},
+					{
+						"name":         "Magenta",
+						"type":         "MAGENTA",
+						"offset":       4,
+						"defaultValue": 0,
+						"minValue":     0,
+						"maxValue":     255,
+						"fadeBehavior": "FADE",
+					},
+					{
+						"name":         "Yellow",
+						"type":         "YELLOW",
+						"offset":       5,
+						"defaultValue": 0,
+						"minValue":     0,
+						"maxValue":     255,
+						"fadeBehavior": "FADE",
+					},
+					{
+						"name":         "Cold White",
+						"type":         "COLD_WHITE",
+						"offset":       6,
+						"defaultValue": 0,
+						"minValue":     0,
+						"maxValue":     255,
+						"fadeBehavior": "FADE",
+					},
+					{
 						"name":         "Dimmer",
 						"type":         "INTENSITY",
-						"offset":       3,
+						"offset":       7,
 						"defaultValue": 0,
 						"minValue":     0,
 						"maxValue":     255,
@@ -118,7 +154,7 @@ func TestFixtureDefinitionCRUD(t *testing.T) {
 		assert.Equal(t, modelName, createResp.CreateFixtureDefinition.Model)
 		assert.Equal(t, "LED_PAR", createResp.CreateFixtureDefinition.Type)
 		assert.False(t, createResp.CreateFixtureDefinition.IsBuiltIn)
-		assert.Len(t, createResp.CreateFixtureDefinition.Channels, 4)
+		assert.Len(t, createResp.CreateFixtureDefinition.Channels, 8)
 
 		// Verify FadeBehavior is returned for channels
 		for _, ch := range createResp.CreateFixtureDefinition.Channels {
