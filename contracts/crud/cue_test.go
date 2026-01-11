@@ -1027,3 +1027,300 @@ func TestSearchCues(t *testing.T) {
 		assert.Contains(t, cue.Name, "Scene")
 	}
 }
+
+// TestCueSkip tests the skip functionality for cues.
+func TestCueSkip(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	// Create project
+	var projectResp struct {
+		CreateProject struct {
+			ID string `json:"id"`
+		} `json:"createProject"`
+	}
+
+	err := client.Mutate(ctx, `
+		mutation CreateProject($input: CreateProjectInput!) {
+			createProject(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{"name": "Skip Cue Test Project"},
+	}, &projectResp)
+
+	require.NoError(t, err)
+	projectID := projectResp.CreateProject.ID
+	defer func() {
+		_ = client.Mutate(ctx, `mutation DeleteProject($id: ID!) { deleteProject(id: $id) }`,
+			map[string]interface{}{"id": projectID}, nil)
+	}()
+
+	// Create scene
+	sceneID := createTestScene(t, client, ctx, projectID, "Skip Test Scene")
+
+	// Create cue list
+	var cueListResp struct {
+		CreateCueList struct {
+			ID string `json:"id"`
+		} `json:"createCueList"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation CreateCueList($input: CreateCueListInput!) {
+			createCueList(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"projectId": projectID,
+			"name":      "Skip Test Cue List",
+		},
+	}, &cueListResp)
+
+	require.NoError(t, err)
+	cueListID := cueListResp.CreateCueList.ID
+
+	// Test creating a cue with skip=true
+	t.Run("CreateCueWithSkip", func(t *testing.T) {
+		var createResp struct {
+			CreateCue struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Skip bool   `json:"skip"`
+			} `json:"createCue"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation CreateCue($input: CreateCueInput!) {
+				createCue(input: $input) {
+					id
+					name
+					skip
+				}
+			}
+		`, map[string]interface{}{
+			"input": map[string]interface{}{
+				"cueListId":   cueListID,
+				"name":        "Skipped Cue",
+				"cueNumber":   1.0,
+				"sceneId":     sceneID,
+				"fadeInTime":  3.0,
+				"fadeOutTime": 2.0,
+				"skip":        true,
+			},
+		}, &createResp)
+
+		require.NoError(t, err)
+		assert.Equal(t, "Skipped Cue", createResp.CreateCue.Name)
+		assert.True(t, createResp.CreateCue.Skip, "Cue should be created with skip=true")
+	})
+
+	// Test creating a cue with default skip=false
+	t.Run("CreateCueDefaultSkipFalse", func(t *testing.T) {
+		var createResp struct {
+			CreateCue struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Skip bool   `json:"skip"`
+			} `json:"createCue"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation CreateCue($input: CreateCueInput!) {
+				createCue(input: $input) {
+					id
+					name
+					skip
+				}
+			}
+		`, map[string]interface{}{
+			"input": map[string]interface{}{
+				"cueListId":   cueListID,
+				"name":        "Normal Cue",
+				"cueNumber":   2.0,
+				"sceneId":     sceneID,
+				"fadeInTime":  3.0,
+				"fadeOutTime": 2.0,
+			},
+		}, &createResp)
+
+		require.NoError(t, err)
+		assert.Equal(t, "Normal Cue", createResp.CreateCue.Name)
+		assert.False(t, createResp.CreateCue.Skip, "Cue should be created with skip=false by default")
+	})
+
+	// Get the cue IDs for further tests
+	var listResp struct {
+		CueList struct {
+			Cues []struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Skip bool   `json:"skip"`
+			} `json:"cues"`
+		} `json:"cueList"`
+	}
+
+	err = client.Query(ctx, `
+		query GetCueList($id: ID!) {
+			cueList(id: $id) {
+				cues {
+					id
+					name
+					skip
+				}
+			}
+		}
+	`, map[string]interface{}{"id": cueListID}, &listResp)
+	require.NoError(t, err)
+
+	var skippedCueID, normalCueID string
+	for _, cue := range listResp.CueList.Cues {
+		if cue.Name == "Skipped Cue" {
+			skippedCueID = cue.ID
+		} else if cue.Name == "Normal Cue" {
+			normalCueID = cue.ID
+		}
+	}
+	require.NotEmpty(t, skippedCueID, "Skipped cue should exist")
+	require.NotEmpty(t, normalCueID, "Normal cue should exist")
+
+	// Test toggling skip from true to false
+	t.Run("ToggleCueSkipToFalse", func(t *testing.T) {
+		var toggleResp struct {
+			ToggleCueSkip struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Skip bool   `json:"skip"`
+			} `json:"toggleCueSkip"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation ToggleCueSkip($cueId: ID!) {
+				toggleCueSkip(cueId: $cueId) {
+					id
+					name
+					skip
+				}
+			}
+		`, map[string]interface{}{"cueId": skippedCueID}, &toggleResp)
+
+		require.NoError(t, err)
+		assert.Equal(t, skippedCueID, toggleResp.ToggleCueSkip.ID)
+		assert.False(t, toggleResp.ToggleCueSkip.Skip, "Skip should be toggled to false")
+	})
+
+	// Test toggling skip from false to true
+	t.Run("ToggleCueSkipToTrue", func(t *testing.T) {
+		var toggleResp struct {
+			ToggleCueSkip struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Skip bool   `json:"skip"`
+			} `json:"toggleCueSkip"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation ToggleCueSkip($cueId: ID!) {
+				toggleCueSkip(cueId: $cueId) {
+					id
+					name
+					skip
+				}
+			}
+		`, map[string]interface{}{"cueId": normalCueID}, &toggleResp)
+
+		require.NoError(t, err)
+		assert.Equal(t, normalCueID, toggleResp.ToggleCueSkip.ID)
+		assert.True(t, toggleResp.ToggleCueSkip.Skip, "Skip should be toggled to true")
+	})
+
+	// Test updating cue with skip field
+	t.Run("UpdateCueSkip", func(t *testing.T) {
+		var updateResp struct {
+			UpdateCue struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Skip bool   `json:"skip"`
+			} `json:"updateCue"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation UpdateCue($id: ID!, $input: CreateCueInput!) {
+				updateCue(id: $id, input: $input) {
+					id
+					name
+					skip
+				}
+			}
+		`, map[string]interface{}{
+			"id": skippedCueID,
+			"input": map[string]interface{}{
+				"cueListId":   cueListID,
+				"name":        "Skipped Cue",
+				"cueNumber":   1.0,
+				"sceneId":     sceneID,
+				"fadeInTime":  3.0,
+				"fadeOutTime": 2.0,
+				"skip":        true,
+			},
+		}, &updateResp)
+
+		require.NoError(t, err)
+		assert.True(t, updateResp.UpdateCue.Skip, "Skip should be set to true via update")
+	})
+
+	// Create a third cue for bulk update test
+	var thirdCueResp struct {
+		CreateCue struct {
+			ID string `json:"id"`
+		} `json:"createCue"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation CreateCue($input: CreateCueInput!) {
+			createCue(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"cueListId":   cueListID,
+			"name":        "Third Cue",
+			"cueNumber":   3.0,
+			"sceneId":     sceneID,
+			"fadeInTime":  3.0,
+			"fadeOutTime": 2.0,
+		},
+	}, &thirdCueResp)
+	require.NoError(t, err)
+	thirdCueID := thirdCueResp.CreateCue.ID
+
+	// Test bulk updating skip field
+	t.Run("BulkUpdateCuesSkip", func(t *testing.T) {
+		var bulkResp struct {
+			BulkUpdateCues []struct {
+				ID   string `json:"id"`
+				Skip bool   `json:"skip"`
+			} `json:"bulkUpdateCues"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation BulkUpdateCues($input: BulkCueUpdateInput!) {
+				bulkUpdateCues(input: $input) {
+					id
+					skip
+				}
+			}
+		`, map[string]interface{}{
+			"input": map[string]interface{}{
+				"cueIds": []string{normalCueID, thirdCueID},
+				"skip":   true,
+			},
+		}, &bulkResp)
+
+		require.NoError(t, err)
+		assert.Len(t, bulkResp.BulkUpdateCues, 2)
+		for _, cue := range bulkResp.BulkUpdateCues {
+			assert.True(t, cue.Skip, "All cues should have skip=true after bulk update")
+		}
+	})
+}
