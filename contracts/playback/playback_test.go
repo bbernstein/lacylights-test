@@ -12,6 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// cueTransitionSettleTime is the duration to wait for a cue transition to settle.
+// This allows time for the fade to complete and DMX values to stabilize.
+const cueTransitionSettleTime = 300 * time.Millisecond
+
 // skipDMXTests returns true if SKIP_DMX_TESTS or SKIP_FADE_TESTS is set
 // These tests depend on DMX output which may not work in all environments
 func skipDMXTests() bool {
@@ -1080,7 +1084,7 @@ func TestNextCueSkipsSkipped(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first cue to settle
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(cueTransitionSettleTime)
 
 	// Verify we're at cue 1 (value 64)
 	if !skipDMXTests() {
@@ -1105,7 +1109,7 @@ func TestNextCueSkipsSkipped(t *testing.T) {
 	assert.True(t, nextResp.NextCue)
 
 	// Wait for transition
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(cueTransitionSettleTime)
 
 	// Verify we're at cue 3 (value 192), not cue 2 (value 128)
 	if !skipDMXTests() {
@@ -1158,7 +1162,7 @@ func TestPreviousCueSkipsSkipped(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for cue to settle
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(cueTransitionSettleTime)
 
 	// Verify we're at cue 4 (value 255)
 	if !skipDMXTests() {
@@ -1183,16 +1187,16 @@ func TestPreviousCueSkipsSkipped(t *testing.T) {
 	assert.True(t, prevResp.PreviousCue)
 
 	// Wait for transition
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(cueTransitionSettleTime)
 
-	// Verify we're at cue 2 (value 128), not cue 3 (value 192)
+	// Verify we're at cue 2 (value 128) - PreviousCue should skip over cue 3 since it's marked as skipped
 	if !skipDMXTests() {
 		var dmxResp struct {
 			DMXOutput []int `json:"dmxOutput"`
 		}
 		err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &dmxResp)
 		require.NoError(t, err)
-		assert.InDelta(t, 128, dmxResp.DMXOutput[0], 5, "PreviousCue should skip to cue 2 (value 128), skipping cue 3")
+		assert.InDelta(t, 128, dmxResp.DMXOutput[0], 5, "PreviousCue should go back to cue 2 (value 128), having skipped cue 3")
 	}
 
 	// Stop playback
@@ -1233,7 +1237,7 @@ func TestJumpToSkippedCueAllowed(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first cue
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(cueTransitionSettleTime)
 
 	// Jump directly to skipped cue 2 (cue index 1)
 	var gotoResp struct {
@@ -1251,7 +1255,7 @@ func TestJumpToSkippedCueAllowed(t *testing.T) {
 	assert.True(t, gotoResp.GoToCue, "Should be able to jump directly to a skipped cue")
 
 	// Wait for transition
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(cueTransitionSettleTime)
 
 	// Verify we're at skipped cue 2 (value 128)
 	if !skipDMXTests() {
@@ -1303,7 +1307,7 @@ func TestMultipleConsecutiveSkippedCues(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for first cue
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(cueTransitionSettleTime)
 
 	// Call NextCue - should skip cues 2 and 3, go directly to cue 4
 	var nextResp struct {
@@ -1318,7 +1322,7 @@ func TestMultipleConsecutiveSkippedCues(t *testing.T) {
 	assert.True(t, nextResp.NextCue)
 
 	// Wait for transition
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(cueTransitionSettleTime)
 
 	// Verify we're at cue 4 (value 255), having skipped both cues 2 and 3
 	if !skipDMXTests() {

@@ -1029,6 +1029,15 @@ func TestSearchCues(t *testing.T) {
 }
 
 // TestCueSkip tests the skip functionality for cues.
+// NOTE: This test uses subtests that share state (project, cue list, cues) for efficiency.
+// The subtests are intentionally dependent on each other and must run in order:
+// 1. CreateCueWithSkip - creates a cue with skip=true
+// 2. CreateCueWithDefaultSkip - creates a cue with default skip=false
+// 3. ToggleCueSkipToFalse - toggles the first cue's skip from true to false
+// 4. ToggleCueSkipToTrue - toggles the second cue's skip from false to true
+// 5. UpdateCueSkip - updates skip via the updateCue mutation
+// 6. BulkUpdateCuesSkip - updates skip via bulkUpdateCues mutation
+// This approach reduces API calls and test setup time while thoroughly testing the feature.
 func TestCueSkip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -1176,9 +1185,10 @@ func TestCueSkip(t *testing.T) {
 
 	var skippedCueID, normalCueID string
 	for _, cue := range listResp.CueList.Cues {
-		if cue.Name == "Skipped Cue" {
+		switch cue.Name {
+		case "Skipped Cue":
 			skippedCueID = cue.ID
-		} else if cue.Name == "Normal Cue" {
+		case "Normal Cue":
 			normalCueID = cue.ID
 		}
 	}
