@@ -12,6 +12,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// cueTransitionSettleTime is the duration to wait for a cue transition to settle.
+// This allows time for the fade to complete and DMX values to stabilize.
+const cueTransitionSettleTime = 300 * time.Millisecond
+
 // skipDMXTests returns true if SKIP_DMX_TESTS or SKIP_FADE_TESTS is set
 // These tests depend on DMX output which may not work in all environments
 func skipDMXTests() bool {
@@ -849,6 +853,485 @@ func TestFadeTimeOverride(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.InDelta(t, 128, dmxResp.DMXOutput[0], 5, "DMX should be near 128 with instant fade")
+	}
+
+	// Stop playback
+	_ = client.Mutate(ctx, `
+		mutation StopCueList($cueListId: ID!) {
+			stopCueList(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
+}
+
+// setupSkipCuePlaybackTest creates a project with fixtures, scenes, and a cue list with 4 cues for skip testing.
+// Returns project ID, cue list ID, and an array of cue IDs.
+func setupSkipCuePlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context) (projectID, cueListID string, cueIDs []string) {
+	// Create project
+	var projectResp struct {
+		CreateProject struct {
+			ID string `json:"id"`
+		} `json:"createProject"`
+	}
+
+	err := client.Mutate(ctx, `
+		mutation CreateProject($input: CreateProjectInput!) {
+			createProject(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{"name": "Skip Cue Playback Test"},
+	}, &projectResp)
+
+	require.NoError(t, err)
+	projectID = projectResp.CreateProject.ID
+
+	// Get or create fixture definition
+	var listResp struct {
+		FixtureDefinitions []struct {
+			ID           string `json:"id"`
+			Manufacturer string `json:"manufacturer"`
+			Model        string `json:"model"`
+		} `json:"fixtureDefinitions"`
+	}
+
+	err = client.Query(ctx, `
+		query {
+			fixtureDefinitions {
+				id
+				manufacturer
+				model
+			}
+		}
+	`, nil, &listResp)
+
+	require.NoError(t, err)
+
+	var definitionID string
+	for _, def := range listResp.FixtureDefinitions {
+		if def.Manufacturer == "Generic" && def.Model == "Dimmer" {
+			definitionID = def.ID
+			break
+		}
+	}
+
+	if definitionID == "" {
+		var createDefResp struct {
+			CreateFixtureDefinition struct {
+				ID string `json:"id"`
+			} `json:"createFixtureDefinition"`
+		}
+
+		err = client.Mutate(ctx, `
+			mutation CreateFixtureDefinition($input: CreateFixtureDefinitionInput!) {
+				createFixtureDefinition(input: $input) { id }
+			}
+		`, map[string]interface{}{
+			"input": map[string]interface{}{
+				"manufacturer": "Generic",
+				"model":        "Dimmer",
+				"type":         "DIMMER",
+				"channels": []map[string]interface{}{
+					{
+						"name":         "Intensity",
+						"type":         "INTENSITY",
+						"offset":       0,
+						"defaultValue": 0,
+						"minValue":     0,
+						"maxValue":     255,
+					},
+				},
+			},
+		}, &createDefResp)
+
+		require.NoError(t, err)
+		definitionID = createDefResp.CreateFixtureDefinition.ID
+	}
+
+	// Create fixture
+	var fixtureResp struct {
+		CreateFixtureInstance struct {
+			ID string `json:"id"`
+		} `json:"createFixtureInstance"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation CreateFixtureInstance($input: CreateFixtureInstanceInput!) {
+			createFixtureInstance(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"projectId":    projectID,
+			"definitionId": definitionID,
+			"name":         "Skip Test Fixture",
+			"universe":     1,
+			"startChannel": 1,
+		},
+	}, &fixtureResp)
+
+	require.NoError(t, err)
+	fixtureID := fixtureResp.CreateFixtureInstance.ID
+
+	// Create 4 scenes with different values
+	sceneValues := []int{64, 128, 192, 255}
+	sceneNames := []string{"Scene25", "Scene50", "Scene75", "Scene100"}
+	var sceneIDs []string
+
+	for i, val := range sceneValues {
+		var sceneResp struct {
+			CreateScene struct {
+				ID string `json:"id"`
+			} `json:"createScene"`
+		}
+
+		err = client.Mutate(ctx, `
+			mutation CreateScene($input: CreateSceneInput!) {
+				createScene(input: $input) { id }
+			}
+		`, map[string]interface{}{
+			"input": map[string]interface{}{
+				"projectId": projectID,
+				"name":      sceneNames[i],
+				"fixtureValues": []map[string]interface{}{
+					{
+						"fixtureId": fixtureID,
+						"channels":  []map[string]int{{"offset": 0, "value": val}},
+					},
+				},
+			},
+		}, &sceneResp)
+
+		require.NoError(t, err)
+		sceneIDs = append(sceneIDs, sceneResp.CreateScene.ID)
+	}
+
+	// Create cue list
+	var cueListResp struct {
+		CreateCueList struct {
+			ID string `json:"id"`
+		} `json:"createCueList"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation CreateCueList($input: CreateCueListInput!) {
+			createCueList(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"projectId": projectID,
+			"name":      "Skip Test Cue List",
+		},
+	}, &cueListResp)
+
+	require.NoError(t, err)
+	cueListID = cueListResp.CreateCueList.ID
+
+	// Add cues
+	cueNames := []string{"Cue1", "Cue2", "Cue3", "Cue4"}
+	for i, sceneID := range sceneIDs {
+		var cueResp struct {
+			CreateCue struct {
+				ID string `json:"id"`
+			} `json:"createCue"`
+		}
+
+		err = client.Mutate(ctx, `
+			mutation CreateCue($input: CreateCueInput!) {
+				createCue(input: $input) { id }
+			}
+		`, map[string]interface{}{
+			"input": map[string]interface{}{
+				"cueListId":   cueListID,
+				"sceneId":     sceneID,
+				"name":        cueNames[i],
+				"cueNumber":   float64(i + 1),
+				"fadeInTime":  0.1, // Fast fade for testing
+				"fadeOutTime": 0.1,
+			},
+		}, &cueResp)
+		require.NoError(t, err)
+		cueIDs = append(cueIDs, cueResp.CreateCue.ID)
+	}
+
+	return projectID, cueListID, cueIDs
+}
+
+// TestNextCueSkipsSkipped tests that NextCue skips over skipped cues.
+func TestNextCueSkipsSkipped(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	projectID, cueListID, cueIDs := setupSkipCuePlaybackTest(t, client, ctx)
+	defer cleanupPlaybackTest(client, ctx, projectID)
+
+	// Skip cue 2 (index 1) - the one with 128 value
+	err := client.Mutate(ctx, `
+		mutation ToggleCueSkip($cueId: ID!) {
+			toggleCueSkip(cueId: $cueId) { id skip }
+		}
+	`, map[string]interface{}{"cueId": cueIDs[1]}, nil)
+	require.NoError(t, err)
+
+	// Ensure clean state
+	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
+
+	// Start cue list at cue 1
+	err = client.Mutate(ctx, `
+		mutation StartCueList($cueListId: ID!) {
+			startCueList(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
+	require.NoError(t, err)
+
+	// Wait for first cue to settle
+	time.Sleep(cueTransitionSettleTime)
+
+	// Verify we're at cue 1 (value 64)
+	if !skipDMXTests() {
+		var dmxResp struct {
+			DMXOutput []int `json:"dmxOutput"`
+		}
+		err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &dmxResp)
+		require.NoError(t, err)
+		assert.InDelta(t, 64, dmxResp.DMXOutput[0], 5, "Should start at cue 1 (value 64)")
+	}
+
+	// Call NextCue - should skip cue 2 and go directly to cue 3
+	var nextResp struct {
+		NextCue bool `json:"nextCue"`
+	}
+	err = client.Mutate(ctx, `
+		mutation NextCue($cueListId: ID!) {
+			nextCue(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, &nextResp)
+	require.NoError(t, err)
+	assert.True(t, nextResp.NextCue)
+
+	// Wait for transition
+	time.Sleep(cueTransitionSettleTime)
+
+	// Verify we're at cue 3 (value 192), not cue 2 (value 128)
+	if !skipDMXTests() {
+		var dmxResp struct {
+			DMXOutput []int `json:"dmxOutput"`
+		}
+		err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &dmxResp)
+		require.NoError(t, err)
+		assert.InDelta(t, 192, dmxResp.DMXOutput[0], 5, "NextCue should skip to cue 3 (value 192), skipping cue 2")
+	}
+
+	// Stop playback
+	_ = client.Mutate(ctx, `
+		mutation StopCueList($cueListId: ID!) {
+			stopCueList(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
+}
+
+// TestPreviousCueSkipsSkipped tests that PreviousCue skips over skipped cues.
+func TestPreviousCueSkipsSkipped(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	projectID, cueListID, cueIDs := setupSkipCuePlaybackTest(t, client, ctx)
+	defer cleanupPlaybackTest(client, ctx, projectID)
+
+	// Skip cue 3 (index 2) - the one with 192 value
+	err := client.Mutate(ctx, `
+		mutation ToggleCueSkip($cueId: ID!) {
+			toggleCueSkip(cueId: $cueId) { id skip }
+		}
+	`, map[string]interface{}{"cueId": cueIDs[2]}, nil)
+	require.NoError(t, err)
+
+	// Ensure clean state
+	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
+
+	// Start cue list at cue 4 (cue number 4)
+	err = client.Mutate(ctx, `
+		mutation StartCueList($cueListId: ID!, $startFromCue: Int) {
+			startCueList(cueListId: $cueListId, startFromCue: $startFromCue)
+		}
+	`, map[string]interface{}{
+		"cueListId":    cueListID,
+		"startFromCue": 4,
+	}, nil)
+	require.NoError(t, err)
+
+	// Wait for cue to settle
+	time.Sleep(cueTransitionSettleTime)
+
+	// Verify we're at cue 4 (value 255)
+	if !skipDMXTests() {
+		var dmxResp struct {
+			DMXOutput []int `json:"dmxOutput"`
+		}
+		err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &dmxResp)
+		require.NoError(t, err)
+		assert.InDelta(t, 255, dmxResp.DMXOutput[0], 5, "Should start at cue 4 (value 255)")
+	}
+
+	// Call PreviousCue - should skip cue 3 and go directly to cue 2
+	var prevResp struct {
+		PreviousCue bool `json:"previousCue"`
+	}
+	err = client.Mutate(ctx, `
+		mutation PreviousCue($cueListId: ID!) {
+			previousCue(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, &prevResp)
+	require.NoError(t, err)
+	assert.True(t, prevResp.PreviousCue)
+
+	// Wait for transition
+	time.Sleep(cueTransitionSettleTime)
+
+	// Verify we're at cue 2 (value 128) - PreviousCue should skip over cue 3 since it's marked as skipped
+	if !skipDMXTests() {
+		var dmxResp struct {
+			DMXOutput []int `json:"dmxOutput"`
+		}
+		err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &dmxResp)
+		require.NoError(t, err)
+		assert.InDelta(t, 128, dmxResp.DMXOutput[0], 5, "PreviousCue should go back to cue 2 (value 128), having skipped cue 3")
+	}
+
+	// Stop playback
+	_ = client.Mutate(ctx, `
+		mutation StopCueList($cueListId: ID!) {
+			stopCueList(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
+}
+
+// TestJumpToSkippedCueAllowed tests that you can still jump directly to a skipped cue.
+func TestJumpToSkippedCueAllowed(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	projectID, cueListID, cueIDs := setupSkipCuePlaybackTest(t, client, ctx)
+	defer cleanupPlaybackTest(client, ctx, projectID)
+
+	// Skip cue 2 (index 1) - the one with 128 value
+	err := client.Mutate(ctx, `
+		mutation ToggleCueSkip($cueId: ID!) {
+			toggleCueSkip(cueId: $cueId) { id skip }
+		}
+	`, map[string]interface{}{"cueId": cueIDs[1]}, nil)
+	require.NoError(t, err)
+
+	// Ensure clean state
+	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
+
+	// Start cue list
+	err = client.Mutate(ctx, `
+		mutation StartCueList($cueListId: ID!) {
+			startCueList(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
+	require.NoError(t, err)
+
+	// Wait for first cue
+	time.Sleep(cueTransitionSettleTime)
+
+	// Jump directly to skipped cue 2 (cue index 1)
+	var gotoResp struct {
+		GoToCue bool `json:"goToCue"`
+	}
+	err = client.Mutate(ctx, `
+		mutation GoToCue($cueListId: ID!, $cueIndex: Int!) {
+			goToCue(cueListId: $cueListId, cueIndex: $cueIndex)
+		}
+	`, map[string]interface{}{
+		"cueListId": cueListID,
+		"cueIndex":  1, // 0-indexed, so cue 2
+	}, &gotoResp)
+	require.NoError(t, err)
+	assert.True(t, gotoResp.GoToCue, "Should be able to jump directly to a skipped cue")
+
+	// Wait for transition
+	time.Sleep(cueTransitionSettleTime)
+
+	// Verify we're at skipped cue 2 (value 128)
+	if !skipDMXTests() {
+		var dmxResp struct {
+			DMXOutput []int `json:"dmxOutput"`
+		}
+		err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &dmxResp)
+		require.NoError(t, err)
+		assert.InDelta(t, 128, dmxResp.DMXOutput[0], 5, "Should be able to jump to skipped cue (value 128)")
+	}
+
+	// Stop playback
+	_ = client.Mutate(ctx, `
+		mutation StopCueList($cueListId: ID!) {
+			stopCueList(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
+}
+
+// TestMultipleConsecutiveSkippedCues tests that multiple consecutive skipped cues are all skipped.
+func TestMultipleConsecutiveSkippedCues(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	projectID, cueListID, cueIDs := setupSkipCuePlaybackTest(t, client, ctx)
+	defer cleanupPlaybackTest(client, ctx, projectID)
+
+	// Skip cues 2 and 3 (indices 1 and 2)
+	for _, cueID := range []string{cueIDs[1], cueIDs[2]} {
+		err := client.Mutate(ctx, `
+			mutation ToggleCueSkip($cueId: ID!) {
+				toggleCueSkip(cueId: $cueId) { id skip }
+			}
+		`, map[string]interface{}{"cueId": cueID}, nil)
+		require.NoError(t, err)
+	}
+
+	// Ensure clean state
+	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
+
+	// Start cue list at cue 1
+	err := client.Mutate(ctx, `
+		mutation StartCueList($cueListId: ID!) {
+			startCueList(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, nil)
+	require.NoError(t, err)
+
+	// Wait for first cue
+	time.Sleep(cueTransitionSettleTime)
+
+	// Call NextCue - should skip cues 2 and 3, go directly to cue 4
+	var nextResp struct {
+		NextCue bool `json:"nextCue"`
+	}
+	err = client.Mutate(ctx, `
+		mutation NextCue($cueListId: ID!) {
+			nextCue(cueListId: $cueListId)
+		}
+	`, map[string]interface{}{"cueListId": cueListID}, &nextResp)
+	require.NoError(t, err)
+	assert.True(t, nextResp.NextCue)
+
+	// Wait for transition
+	time.Sleep(cueTransitionSettleTime)
+
+	// Verify we're at cue 4 (value 255), having skipped both cues 2 and 3
+	if !skipDMXTests() {
+		var dmxResp struct {
+			DMXOutput []int `json:"dmxOutput"`
+		}
+		err = client.Query(ctx, `query { dmxOutput(universe: 1) }`, nil, &dmxResp)
+		require.NoError(t, err)
+		assert.InDelta(t, 255, dmxResp.DMXOutput[0], 5, "NextCue should skip to cue 4 (value 255), skipping cues 2 and 3")
 	}
 
 	// Stop playback
