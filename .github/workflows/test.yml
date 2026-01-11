@@ -90,6 +90,7 @@ jobs:
           PORT: "4001"
           ARTNET_ENABLED: "false"
           DATABASE_URL: "file:./test.db"
+          OFL_IMPORT_ENABLED: "false"
 
       - name: Run CI tests
         run: make test-ci
