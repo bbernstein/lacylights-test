@@ -86,14 +86,12 @@ lacylights-test/
 
 **CRITICAL**: Most tests require understanding code from OTHER repositories:
 
-```
-When testing:                   Read code from:
-─────────────────────────────   ─────────────────────
-GraphQL API contracts           lacylights-go (schema, resolvers)
-Frontend integration            lacylights-fe (queries, mutations)
-MCP tool execution              lacylights-mcp (tool definitions)
-DMX output correctness          lacylights-go (fade engine)
-```
+| When testing | Read code from |
+|--------------|----------------|
+| GraphQL API contracts | lacylights-go (schema, resolvers) |
+| Frontend integration | lacylights-fe (queries, mutations) |
+| MCP tool execution | lacylights-mcp (tool definitions) |
+| DMX output correctness | lacylights-go (fade engine) |
 
 **Use the Explore agent** to read code from other repos before writing tests.
 
