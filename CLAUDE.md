@@ -180,8 +180,9 @@ Tests can be run against specific branches from multiple repos:
 | [lacylights-go](https://github.com/bbernstein/lacylights-go) | GraphQL schema, resolvers, fade engine |
 | [lacylights-fe](https://github.com/bbernstein/lacylights-fe) | Actual queries/mutations used by UI |
 | [lacylights-mcp](https://github.com/bbernstein/lacylights-mcp) | MCP tool definitions |
-| [lacylights-rpi](https://github.com/bbernstein/lacylights-rpi) | Deployment configuration |
-| [lacylights-mac](https://github.com/bbernstein/lacylights-mac) | macOS app behavior |
+| [lacylights-terraform](https://github.com/bbernstein/lacylights-terraform) | Distribution infrastructure configuration |
+| [lacylights-rpi](https://github.com/bbernstein/lacylights-rpi) | Raspberry Pi production platform |
+| [lacylights-mac](https://github.com/bbernstein/lacylights-mac) | macOS production platform |
 
 ## Important Notes
 
