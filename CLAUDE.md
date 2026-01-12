@@ -57,13 +57,14 @@ lacylights-test/
 │   ├── crud/           # CRUD operation tests
 │   ├── dmx/            # DMX output behavior tests
 │   ├── fade/           # Fade curve and timing tests
+│   ├── importexport/   # Import/export contract tests
 │   ├── ofl/            # Open Fixture Library import tests
 │   ├── playback/       # Cue list playback tests
 │   ├── preview/        # Preview session tests
 │   └── settings/       # System settings tests
-├── integration/         # Cross-repo integration tests
-├── e2e/                # End-to-end tests (planned)
-├── stress/             # Performance tests (planned)
+├── integration/         # Cross-repo integration tests (future)
+├── e2e/                # End-to-end tests (future)
+├── stress/             # Performance tests (future)
 ├── pkg/                # Shared test utilities
 │   ├── artnet/         # Art-Net packet capture
 │   ├── graphql/        # GraphQL HTTP client
