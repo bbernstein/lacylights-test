@@ -20,8 +20,8 @@ type sparseChannelTestSetup struct {
 	projectID    string
 	definitionID string
 	fixtureID    string
-	sceneBoardID string
-	sceneIDs     map[string]string // name -> ID
+	lookBoardID  string
+	lookIDs      map[string]string // name -> ID
 	fixtureIDs   []string          // multiple fixture IDs for multi-fixture tests
 }
 
@@ -36,8 +36,8 @@ func newSparseChannelTestSetup(t *testing.T) *sparseChannelTestSetup {
 	resetDMXState(t, client)
 
 	setup := &sparseChannelTestSetup{
-		client:   client,
-		sceneIDs: make(map[string]string),
+		client:  client,
+		lookIDs: make(map[string]string),
 	}
 
 	// Create project
@@ -105,15 +105,15 @@ func newSparseChannelTestSetup(t *testing.T) *sparseChannelTestSetup {
 	require.NoError(t, err)
 	setup.fixtureID = instanceResp.CreateFixtureInstance.ID
 
-	// Create scene board
+	// Create look board
 	var boardResp struct {
-		CreateSceneBoard struct {
+		CreateLookBoard struct {
 			ID string `json:"id"`
-		} `json:"createSceneBoard"`
+		} `json:"createLookBoard"`
 	}
 	err = client.Mutate(ctx, `
-		mutation CreateSceneBoard($input: CreateSceneBoardInput!) {
-			createSceneBoard(input: $input) { id }
+		mutation CreateLookBoard($input: CreateLookBoardInput!) {
+			createLookBoard(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -123,7 +123,7 @@ func newSparseChannelTestSetup(t *testing.T) *sparseChannelTestSetup {
 		},
 	}, &boardResp)
 	require.NoError(t, err)
-	setup.sceneBoardID = boardResp.CreateSceneBoard.ID
+	setup.lookBoardID = boardResp.CreateLookBoard.ID
 
 	return setup
 }
@@ -140,19 +140,19 @@ func (s *sparseChannelTestSetup) cleanup(t *testing.T) {
 		map[string]interface{}{"id": s.definitionID}, nil)
 }
 
-func (s *sparseChannelTestSetup) createSparseScene(t *testing.T, name string, channels []map[string]interface{}) string {
+func (s *sparseChannelTestSetup) createSparseLook(t *testing.T, name string, channels []map[string]interface{}) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var resp struct {
-		CreateScene struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err := s.client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -167,8 +167,8 @@ func (s *sparseChannelTestSetup) createSparseScene(t *testing.T, name string, ch
 		},
 	}, &resp)
 	require.NoError(t, err)
-	s.sceneIDs[name] = resp.CreateScene.ID
-	return resp.CreateScene.ID
+	s.lookIDs[name] = resp.CreateLook.ID
+	return resp.CreateLook.ID
 }
 
 // createMultipleFixtures creates multiple fixture instances and stores their IDs in fixtureIDs.
@@ -216,8 +216,8 @@ func TestSparseChannelsDMXOutput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Create Scene 1: Only set Dimmer (channel 0) to 255
-	sceneOnlyDimmerID := setup.createSparseScene(t, "Only Dimmer", []map[string]interface{}{
+	// Create Look 1: Only set Dimmer (channel 0) to 255
+	lookOnlyDimmerID := setup.createSparseLook(t, "Only Dimmer", []map[string]interface{}{
 		{"offset": 0, "value": 255}, // Dimmer only
 	})
 
@@ -239,21 +239,21 @@ func TestSparseChannelsDMXOutput(t *testing.T) {
 
 	receiver.ClearFrames()
 
-	// Activate scene with only Dimmer set
+	// Activate look with only Dimmer set
 	var activateResp struct {
-		ActivateSceneFromBoard bool `json:"activateSceneFromBoard"`
+		ActivateLookFromBoard bool `json:"activateLookFromBoard"`
 	}
 	err = setup.client.Mutate(ctx, `
-		mutation ActivateScene($boardId: ID!, $sceneId: ID!, $fadeTime: Float) {
-			activateSceneFromBoard(sceneBoardId: $boardId, sceneId: $sceneId, fadeTimeOverride: $fadeTime)
+		mutation ActivateLook($boardId: ID!, $lookId: ID!, $fadeTime: Float) {
+			activateLookFromBoard(lookBoardId: $boardId, lookId: $lookId, fadeTimeOverride: $fadeTime)
 		}
 	`, map[string]interface{}{
-		"boardId":  setup.sceneBoardID,
-		"sceneId":  sceneOnlyDimmerID,
+		"boardId":  setup.lookBoardID,
+		"lookId":   lookOnlyDimmerID,
 		"fadeTime": 0.0, // Instant to avoid fade complexity
 	}, &activateResp)
 	require.NoError(t, err)
-	assert.True(t, activateResp.ActivateSceneFromBoard)
+	assert.True(t, activateResp.ActivateLookFromBoard)
 
 	// Wait for DMX output
 	time.Sleep(200 * time.Millisecond)
@@ -285,7 +285,7 @@ func TestSparseChannelsDMXOutput(t *testing.T) {
 }
 
 // TestSparseChannelsExcludedRetainValues tests that channels excluded from sparse array
-// retain their previous values during scene transitions.
+// retain their previous values during look transitions.
 func TestSparseChannelsExcludedRetainValues(t *testing.T) {
 	if os.Getenv("SKIP_FADE_TESTS") != "" {
 		t.Skip("Skipping fade test: SKIP_FADE_TESTS is set")
@@ -297,16 +297,16 @@ func TestSparseChannelsExcludedRetainValues(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Scene 1: Set all channels to known values
-	sceneAllID := setup.createSparseScene(t, "All Channels", []map[string]interface{}{
+	// Look 1: Set all channels to known values
+	lookAllID := setup.createSparseLook(t, "All Channels", []map[string]interface{}{
 		{"offset": 0, "value": 255}, // Dimmer
 		{"offset": 1, "value": 200}, // Red
 		{"offset": 2, "value": 150}, // Green
 		{"offset": 3, "value": 100}, // Blue
 	})
 
-	// Scene 2: Only modify Dimmer, should preserve R, G, B
-	sceneOnlyDimmerID := setup.createSparseScene(t, "Only Dimmer Changed", []map[string]interface{}{
+	// Look 2: Only modify Dimmer, should preserve R, G, B
+	lookOnlyDimmerID := setup.createSparseLook(t, "Only Dimmer Changed", []map[string]interface{}{
 		{"offset": 0, "value": 128}, // Dimmer changed to 128
 		// R, G, B not specified - should retain previous values
 	})
@@ -327,17 +327,17 @@ func TestSparseChannelsExcludedRetainValues(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
 
-	// Activate Scene 1 (all channels set)
+	// Activate Look 1 (all channels set)
 	var activateResp struct {
-		ActivateSceneFromBoard bool `json:"activateSceneFromBoard"`
+		ActivateLookFromBoard bool `json:"activateLookFromBoard"`
 	}
 	err = setup.client.Mutate(ctx, `
-		mutation ActivateScene($boardId: ID!, $sceneId: ID!, $fadeTime: Float) {
-			activateSceneFromBoard(sceneBoardId: $boardId, sceneId: $sceneId, fadeTimeOverride: $fadeTime)
+		mutation ActivateLook($boardId: ID!, $lookId: ID!, $fadeTime: Float) {
+			activateLookFromBoard(lookBoardId: $boardId, lookId: $lookId, fadeTimeOverride: $fadeTime)
 		}
 	`, map[string]interface{}{
-		"boardId":  setup.sceneBoardID,
-		"sceneId":  sceneAllID,
+		"boardId":  setup.lookBoardID,
+		"lookId":   lookAllID,
 		"fadeTime": 0.0,
 	}, &activateResp)
 	require.NoError(t, err)
@@ -345,14 +345,14 @@ func TestSparseChannelsExcludedRetainValues(t *testing.T) {
 
 	receiver.ClearFrames()
 
-	// Activate Scene 2 (only Dimmer specified)
+	// Activate Look 2 (only Dimmer specified)
 	err = setup.client.Mutate(ctx, `
-		mutation ActivateScene($boardId: ID!, $sceneId: ID!, $fadeTime: Float) {
-			activateSceneFromBoard(sceneBoardId: $boardId, sceneId: $sceneId, fadeTimeOverride: $fadeTime)
+		mutation ActivateLook($boardId: ID!, $lookId: ID!, $fadeTime: Float) {
+			activateLookFromBoard(lookBoardId: $boardId, lookId: $lookId, fadeTimeOverride: $fadeTime)
 		}
 	`, map[string]interface{}{
-		"boardId":  setup.sceneBoardID,
-		"sceneId":  sceneOnlyDimmerID,
+		"boardId":  setup.lookBoardID,
+		"lookId":   lookOnlyDimmerID,
 		"fadeTime": 0.0,
 	}, &activateResp)
 	require.NoError(t, err)
@@ -363,7 +363,7 @@ func TestSparseChannelsExcludedRetainValues(t *testing.T) {
 		t.Skipf("Not enough Art-Net frames captured (%d), skipping DMX verification", len(frames))
 	}
 
-	t.Logf("Captured %d Art-Net frames after Scene 2 activation", len(frames))
+	t.Logf("Captured %d Art-Net frames after Look 2 activation", len(frames))
 
 	// Verify RGB retained previous values, only Dimmer changed
 	lastFrame := frames[len(frames)-1]
@@ -378,7 +378,7 @@ func TestSparseChannelsExcludedRetainValues(t *testing.T) {
 		assert.Equal(t, uint8(150), green, "Green should retain previous value of 150")
 		assert.Equal(t, uint8(100), blue, "Blue should retain previous value of 100")
 
-		t.Logf("DMX values after Scene 2: Dimmer=%d (changed), R=%d (retained), G=%d (retained), B=%d (retained)",
+		t.Logf("DMX values after Look 2: Dimmer=%d (changed), R=%d (retained), G=%d (retained), B=%d (retained)",
 			dimmer, red, green, blue)
 	}
 }
@@ -396,16 +396,16 @@ func TestSparseChannelsFadeOnlySpecified(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Scene 1: All channels at high values
-	scene1ID := setup.createSparseScene(t, "All High", []map[string]interface{}{
+	// Look 1: All channels at high values
+	look1ID := setup.createSparseLook(t, "All High", []map[string]interface{}{
 		{"offset": 0, "value": 255}, // Dimmer
 		{"offset": 1, "value": 255}, // Red
 		{"offset": 2, "value": 255}, // Green
 		{"offset": 3, "value": 255}, // Blue
 	})
 
-	// Scene 2: Only fade Red to 0, other channels not specified (should retain)
-	scene2ID := setup.createSparseScene(t, "Only Red Fades", []map[string]interface{}{
+	// Look 2: Only fade Red to 0, other channels not specified (should retain)
+	look2ID := setup.createSparseLook(t, "Only Red Fades", []map[string]interface{}{
 		{"offset": 1, "value": 0}, // Red fades to 0
 		// Dimmer, Green, Blue not specified - should stay at 255
 	})
@@ -418,17 +418,17 @@ func TestSparseChannelsFadeOnlySpecified(t *testing.T) {
 	}
 	defer func() { _ = receiver.Stop() }()
 
-	// Activate Scene 1 (instant)
+	// Activate Look 1 (instant)
 	var activateResp struct {
-		ActivateSceneFromBoard bool `json:"activateSceneFromBoard"`
+		ActivateLookFromBoard bool `json:"activateLookFromBoard"`
 	}
 	err = setup.client.Mutate(ctx, `
-		mutation ActivateScene($boardId: ID!, $sceneId: ID!, $fadeTime: Float) {
-			activateSceneFromBoard(sceneBoardId: $boardId, sceneId: $sceneId, fadeTimeOverride: $fadeTime)
+		mutation ActivateLook($boardId: ID!, $lookId: ID!, $fadeTime: Float) {
+			activateLookFromBoard(lookBoardId: $boardId, lookId: $lookId, fadeTimeOverride: $fadeTime)
 		}
 	`, map[string]interface{}{
-		"boardId":  setup.sceneBoardID,
-		"sceneId":  scene1ID,
+		"boardId":  setup.lookBoardID,
+		"lookId":   look1ID,
 		"fadeTime": 0.0,
 	}, &activateResp)
 	require.NoError(t, err)
@@ -436,14 +436,14 @@ func TestSparseChannelsFadeOnlySpecified(t *testing.T) {
 
 	receiver.ClearFrames()
 
-	// Activate Scene 2 with 1-second fade (only Red should fade)
+	// Activate Look 2 with 1-second fade (only Red should fade)
 	err = setup.client.Mutate(ctx, `
-		mutation ActivateScene($boardId: ID!, $sceneId: ID!, $fadeTime: Float) {
-			activateSceneFromBoard(sceneBoardId: $boardId, sceneId: $sceneId, fadeTimeOverride: $fadeTime)
+		mutation ActivateLook($boardId: ID!, $lookId: ID!, $fadeTime: Float) {
+			activateLookFromBoard(lookBoardId: $boardId, lookId: $lookId, fadeTimeOverride: $fadeTime)
 		}
 	`, map[string]interface{}{
-		"boardId":  setup.sceneBoardID,
-		"sceneId":  scene2ID,
+		"boardId":  setup.lookBoardID,
+		"lookId":   look2ID,
 		"fadeTime": 1.0,
 	}, &activateResp)
 	require.NoError(t, err)
@@ -530,21 +530,21 @@ func TestSparseChannelsMultipleFixtures(t *testing.T) {
 	fixture1ID := setup.fixtureIDs[0]
 	fixture2ID := setup.fixtureIDs[1]
 
-	// Create scene with different sparse channels for each fixture
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look with different sparse channels for each fixture
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err := setup.client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": setup.projectID,
-			"name":      "Multi-Fixture Sparse Scene",
+			"name":      "Multi-Fixture Sparse Look",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture1ID,
@@ -560,9 +560,9 @@ func TestSparseChannelsMultipleFixtures(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
 	// Start Art-Net receiver
 	receiver := artnet.NewReceiver(getArtNetPort())
@@ -572,15 +572,15 @@ func TestSparseChannelsMultipleFixtures(t *testing.T) {
 	}
 	defer func() { _ = receiver.Stop() }()
 
-	// Activate scene
+	// Activate look
 	var activateResp struct {
-		SetSceneLive bool `json:"setSceneLive"`
+		SetLookLive bool `json:"setLookLive"`
 	}
 	err = setup.client.Mutate(ctx, `
-		mutation SetSceneLive($sceneId: ID!) {
-			setSceneLive(sceneId: $sceneId)
+		mutation SetLookLive($lookId: ID!) {
+			setLookLive(lookId: $lookId)
 		}
-	`, map[string]interface{}{"sceneId": sceneID}, &activateResp)
+	`, map[string]interface{}{"lookId": lookID}, &activateResp)
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 

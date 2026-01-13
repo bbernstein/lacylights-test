@@ -22,8 +22,8 @@ func skipDMXTests() bool {
 	return os.Getenv("SKIP_DMX_TESTS") != "" || os.Getenv("SKIP_FADE_TESTS") != ""
 }
 
-// setupPlaybackTest creates a project with fixtures, scenes, and a cue list for playback testing.
-func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context) (projectID, cueListID, scene1ID, scene2ID string) {
+// setupPlaybackTest creates a project with fixtures, looks, and a cue list for playback testing.
+func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context) (projectID, cueListID, look1ID, look2ID string) {
 	// Create project
 	var projectResp struct {
 		CreateProject struct {
@@ -128,16 +128,16 @@ func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context
 	require.NoError(t, err)
 	fixtureID := fixtureResp.CreateFixtureInstance.ID
 
-	// Create two scenes with different values
-	var scene1Resp struct {
-		CreateScene struct {
+	// Create two looks with different values
+	var look1Resp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -150,20 +150,20 @@ func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context
 				},
 			},
 		},
-	}, &scene1Resp)
+	}, &look1Resp)
 
 	require.NoError(t, err)
-	scene1ID = scene1Resp.CreateScene.ID
+	look1ID = look1Resp.CreateLook.ID
 
-	var scene2Resp struct {
-		CreateScene struct {
+	var look2Resp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -176,10 +176,10 @@ func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context
 				},
 			},
 		},
-	}, &scene2Resp)
+	}, &look2Resp)
 
 	require.NoError(t, err)
-	scene2ID = scene2Resp.CreateScene.ID
+	look2ID = look2Resp.CreateLook.ID
 
 	// Create cue list with cues
 	var cueListResp struct {
@@ -203,7 +203,7 @@ func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context
 	cueListID = cueListResp.CreateCueList.ID
 
 	// Add cues
-	for i, sceneID := range []string{scene1ID, scene2ID} {
+	for i, lookID := range []string{look1ID, look2ID} {
 		err = client.Mutate(ctx, `
 			mutation CreateCue($input: CreateCueInput!) {
 				createCue(input: $input) { id }
@@ -211,7 +211,7 @@ func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"cueListId":   cueListID,
-				"sceneId":     sceneID,
+				"lookId":     lookID,
 				"name":        "Cue " + string(rune('A'+i)),
 				"cueNumber":   float64(i + 1),
 				"fadeInTime":  1.0,
@@ -221,7 +221,7 @@ func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context
 		require.NoError(t, err)
 	}
 
-	return projectID, cueListID, scene1ID, scene2ID
+	return projectID, cueListID, look1ID, look2ID
 }
 
 func cleanupPlaybackTest(client *graphql.Client, ctx context.Context, projectID string) {
@@ -328,7 +328,7 @@ func TestCueListPlayback(t *testing.T) {
 			`, nil, &dmxResp)
 
 			require.NoError(t, err)
-			// Should be at scene 2 (half bright = 128)
+			// Should be at look 2 (half bright = 128)
 			assert.InDelta(t, 128, dmxResp.DMXOutput[0], 5, "DMX should be near 128 after cue 2")
 		}
 	})
@@ -361,7 +361,7 @@ func TestCueListPlayback(t *testing.T) {
 			`, nil, &dmxResp)
 
 			require.NoError(t, err)
-			// Should be back at scene 1 (full bright = 255)
+			// Should be back at look 1 (full bright = 255)
 			assert.InDelta(t, 255, dmxResp.DMXOutput[0], 5, "DMX should be near 255 after returning to cue 1")
 		}
 	})
@@ -500,7 +500,7 @@ func TestPlayCue(t *testing.T) {
 	// Wait for fade
 	time.Sleep(1000 * time.Millisecond)
 
-	// Verify DMX output matches scene 1 (full bright)
+	// Verify DMX output matches look 1 (full bright)
 	if !skipDMXTests() {
 		var dmxResp struct {
 			DMXOutput []int `json:"dmxOutput"`
@@ -515,32 +515,32 @@ func TestPlayCue(t *testing.T) {
 	}
 }
 
-// TestSetSceneLive tests activating a scene directly.
-func TestSetSceneLive(t *testing.T) {
+// TestSetLookLive tests activating a look directly.
+func TestSetLookLive(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	client := graphql.NewClient("")
 
-	projectID, _, scene1ID, scene2ID := setupPlaybackTest(t, client, ctx)
+	projectID, _, look1ID, look2ID := setupPlaybackTest(t, client, ctx)
 	defer cleanupPlaybackTest(client, ctx, projectID)
 
 	// Ensure clean state
 	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
 
-	// Activate scene 1
+	// Activate look 1
 	var liveResp struct {
-		SetSceneLive bool `json:"setSceneLive"`
+		SetLookLive bool `json:"setLookLive"`
 	}
 
 	err := client.Mutate(ctx, `
-		mutation SetSceneLive($sceneId: ID!) {
-			setSceneLive(sceneId: $sceneId)
+		mutation SetLookLive($lookId: ID!) {
+			setLookLive(lookId: $lookId)
 		}
-	`, map[string]interface{}{"sceneId": scene1ID}, &liveResp)
+	`, map[string]interface{}{"lookId": look1ID}, &liveResp)
 
 	require.NoError(t, err)
-	assert.True(t, liveResp.SetSceneLive)
+	assert.True(t, liveResp.SetLookLive)
 
 	// Give it a moment to apply
 	time.Sleep(500 * time.Millisecond)
@@ -556,18 +556,18 @@ func TestSetSceneLive(t *testing.T) {
 		`, nil, &dmxResp)
 
 		require.NoError(t, err)
-		assert.Equal(t, 255, dmxResp.DMXOutput[0], "DMX should be 255 (scene1 full bright)")
+		assert.Equal(t, 255, dmxResp.DMXOutput[0], "DMX should be 255 (look1 full bright)")
 	}
 
-	// Switch to scene 2
+	// Switch to look 2
 	err = client.Mutate(ctx, `
-		mutation SetSceneLive($sceneId: ID!) {
-			setSceneLive(sceneId: $sceneId)
+		mutation SetLookLive($lookId: ID!) {
+			setLookLive(lookId: $lookId)
 		}
-	`, map[string]interface{}{"sceneId": scene2ID}, &liveResp)
+	`, map[string]interface{}{"lookId": look2ID}, &liveResp)
 
 	require.NoError(t, err)
-	assert.True(t, liveResp.SetSceneLive)
+	assert.True(t, liveResp.SetLookLive)
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -581,34 +581,34 @@ func TestSetSceneLive(t *testing.T) {
 		`, nil, &dmxResp)
 
 		require.NoError(t, err)
-		assert.Equal(t, 128, dmxResp.DMXOutput[0], "DMX should be 128 (scene2 half bright)")
+		assert.Equal(t, 128, dmxResp.DMXOutput[0], "DMX should be 128 (look2 half bright)")
 	}
 }
 
-// TestCurrentActiveScene tests querying the currently active scene.
-func TestCurrentActiveScene(t *testing.T) {
+// TestCurrentActiveLook tests querying the currently active look.
+func TestCurrentActiveLook(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	client := graphql.NewClient("")
 
-	projectID, _, scene1ID, _ := setupPlaybackTest(t, client, ctx)
+	projectID, _, look1ID, _ := setupPlaybackTest(t, client, ctx)
 	defer cleanupPlaybackTest(client, ctx, projectID)
 
 	// Ensure clean state
 	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
 
-	// Query active scene (should be null or nothing)
+	// Query active look (should be null or nothing)
 	var activeResp struct {
-		CurrentActiveScene *struct {
+		CurrentActiveLook *struct {
 			ID   string `json:"id"`
 			Name string `json:"name"`
-		} `json:"currentActiveScene"`
+		} `json:"currentActiveLook"`
 	}
 
 	err := client.Query(ctx, `
 		query {
-			currentActiveScene {
+			currentActiveLook {
 				id
 				name
 			}
@@ -616,21 +616,21 @@ func TestCurrentActiveScene(t *testing.T) {
 	`, nil, &activeResp)
 
 	require.NoError(t, err)
-	// After fadeToBlack, there may or may not be an active scene
+	// After fadeToBlack, there may or may not be an active look
 
-	// Activate a scene
+	// Activate a look
 	_ = client.Mutate(ctx, `
-		mutation SetSceneLive($sceneId: ID!) {
-			setSceneLive(sceneId: $sceneId)
+		mutation SetLookLive($lookId: ID!) {
+			setLookLive(lookId: $lookId)
 		}
-	`, map[string]interface{}{"sceneId": scene1ID}, nil)
+	`, map[string]interface{}{"lookId": look1ID}, nil)
 
 	time.Sleep(500 * time.Millisecond)
 
-	// Query active scene again
+	// Query active look again
 	err = client.Query(ctx, `
 		query {
-			currentActiveScene {
+			currentActiveLook {
 				id
 				name
 			}
@@ -638,9 +638,9 @@ func TestCurrentActiveScene(t *testing.T) {
 	`, nil, &activeResp)
 
 	require.NoError(t, err)
-	if activeResp.CurrentActiveScene != nil {
-		assert.Equal(t, scene1ID, activeResp.CurrentActiveScene.ID)
-		assert.Equal(t, "Full Bright", activeResp.CurrentActiveScene.Name)
+	if activeResp.CurrentActiveLook != nil {
+		assert.Equal(t, look1ID, activeResp.CurrentActiveLook.ID)
+		assert.Equal(t, "Full Bright", activeResp.CurrentActiveLook.Name)
 	}
 }
 
@@ -668,7 +668,7 @@ func TestStartCueListFromCue(t *testing.T) {
 		}
 	`, map[string]interface{}{
 		"cueListId":    cueListID,
-		"startFromCue": 2, // Cue number 2.0 (Half Bright scene)
+		"startFromCue": 2, // Cue number 2.0 (Half Bright look)
 	}, &startResp)
 
 	require.NoError(t, err)
@@ -677,7 +677,7 @@ func TestStartCueListFromCue(t *testing.T) {
 	// Wait for cue to settle
 	time.Sleep(1500 * time.Millisecond)
 
-	// Verify DMX output matches scene 2 (half bright)
+	// Verify DMX output matches look 2 (half bright)
 	if !skipDMXTests() {
 		var dmxResp struct {
 			DMXOutput []int `json:"dmxOutput"`
@@ -779,7 +779,7 @@ func TestIsFadingDuringTransition(t *testing.T) {
 	`, map[string]interface{}{"cueListId": cueListID}, &statusResp)
 
 	require.NoError(t, err)
-	// After fade completes: isPlaying=true (scene active), isFading=false (no transition)
+	// After fade completes: isPlaying=true (look active), isFading=false (no transition)
 	t.Logf("After fade completes: isPlaying=%v, isFading=%v, fadeProgress=%v",
 		statusResp.CueListPlaybackStatus.IsPlaying,
 		statusResp.CueListPlaybackStatus.IsFading,
@@ -863,7 +863,7 @@ func TestFadeTimeOverride(t *testing.T) {
 	`, map[string]interface{}{"cueListId": cueListID}, nil)
 }
 
-// setupSkipCuePlaybackTest creates a project with fixtures, scenes, and a cue list with 4 cues for skip testing.
+// setupSkipCuePlaybackTest creates a project with fixtures, looks, and a cue list with 4 cues for skip testing.
 // Returns project ID, cue list ID, and an array of cue IDs.
 func setupSkipCuePlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context) (projectID, cueListID string, cueIDs []string) {
 	// Create project
@@ -970,26 +970,26 @@ func setupSkipCuePlaybackTest(t *testing.T, client *graphql.Client, ctx context.
 	require.NoError(t, err)
 	fixtureID := fixtureResp.CreateFixtureInstance.ID
 
-	// Create 4 scenes with different values
-	sceneValues := []int{64, 128, 192, 255}
-	sceneNames := []string{"Scene25", "Scene50", "Scene75", "Scene100"}
-	var sceneIDs []string
+	// Create 4 looks with different values
+	lookValues := []int{64, 128, 192, 255}
+	lookNames := []string{"Look25", "Look50", "Look75", "Look100"}
+	var lookIDs []string
 
-	for i, val := range sceneValues {
-		var sceneResp struct {
-			CreateScene struct {
+	for i, val := range lookValues {
+		var lookResp struct {
+			CreateLook struct {
 				ID string `json:"id"`
-			} `json:"createScene"`
+			} `json:"createLook"`
 		}
 
 		err = client.Mutate(ctx, `
-			mutation CreateScene($input: CreateSceneInput!) {
-				createScene(input: $input) { id }
+			mutation CreateLook($input: CreateLookInput!) {
+				createLook(input: $input) { id }
 			}
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"projectId": projectID,
-				"name":      sceneNames[i],
+				"name":      lookNames[i],
 				"fixtureValues": []map[string]interface{}{
 					{
 						"fixtureId": fixtureID,
@@ -997,10 +997,10 @@ func setupSkipCuePlaybackTest(t *testing.T, client *graphql.Client, ctx context.
 					},
 				},
 			},
-		}, &sceneResp)
+		}, &lookResp)
 
 		require.NoError(t, err)
-		sceneIDs = append(sceneIDs, sceneResp.CreateScene.ID)
+		lookIDs = append(lookIDs, lookResp.CreateLook.ID)
 	}
 
 	// Create cue list
@@ -1026,7 +1026,7 @@ func setupSkipCuePlaybackTest(t *testing.T, client *graphql.Client, ctx context.
 
 	// Add cues
 	cueNames := []string{"Cue1", "Cue2", "Cue3", "Cue4"}
-	for i, sceneID := range sceneIDs {
+	for i, lookID := range lookIDs {
 		var cueResp struct {
 			CreateCue struct {
 				ID string `json:"id"`
@@ -1040,7 +1040,7 @@ func setupSkipCuePlaybackTest(t *testing.T, client *graphql.Client, ctx context.
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"cueListId":   cueListID,
-				"sceneId":     sceneID,
+				"lookId":     lookID,
 				"name":        cueNames[i],
 				"cueNumber":   float64(i + 1),
 				"fadeInTime":  0.1, // Fast fade for testing

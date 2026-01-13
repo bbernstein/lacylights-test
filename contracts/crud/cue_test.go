@@ -11,17 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// createTestScene creates a scene for cue tests.
-func createTestScene(t *testing.T, client *graphql.Client, ctx context.Context, projectID string, name string) string {
+// createTestLook creates a look for cue tests.
+func createTestLook(t *testing.T, client *graphql.Client, ctx context.Context, projectID string, name string) string {
 	var resp struct {
-		CreateScene struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err := client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -32,7 +32,7 @@ func createTestScene(t *testing.T, client *graphql.Client, ctx context.Context, 
 	}, &resp)
 
 	require.NoError(t, err)
-	return resp.CreateScene.ID
+	return resp.CreateLook.ID
 }
 
 // TestCueListCRUD tests all cue list CRUD operations.
@@ -278,8 +278,8 @@ func TestCueCRUD(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// Create scene and cue list
-	sceneID := createTestScene(t, client, ctx, projectID, "Cue Test Scene")
+	// Create look and cue list
+	lookID := createTestLook(t, client, ctx, projectID, "Cue Test Look")
 
 	var cueListResp struct {
 		CreateCueList struct {
@@ -313,10 +313,10 @@ func TestCueCRUD(t *testing.T) {
 				FollowTime  *float64 `json:"followTime"`
 				EasingType  *string  `json:"easingType"`
 				Notes       *string  `json:"notes"`
-				Scene       struct {
+				Look struct {
 					ID   string `json:"id"`
 					Name string `json:"name"`
-				} `json:"scene"`
+				} `json:"look"`
 			} `json:"createCue"`
 		}
 
@@ -331,7 +331,7 @@ func TestCueCRUD(t *testing.T) {
 					followTime
 					easingType
 					notes
-					scene {
+					look {
 						id
 						name
 					}
@@ -340,7 +340,7 @@ func TestCueCRUD(t *testing.T) {
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"cueListId":   cueListID,
-				"sceneId":     sceneID,
+				"lookId":      lookID,
 				"name":        "Opening Cue",
 				"cueNumber":   1.0,
 				"fadeInTime":  3.0,
@@ -359,7 +359,7 @@ func TestCueCRUD(t *testing.T) {
 		assert.Equal(t, 2.0, createResp.CreateCue.FadeOutTime)
 		assert.NotNil(t, createResp.CreateCue.FollowTime)
 		assert.Equal(t, 5.0, *createResp.CreateCue.FollowTime)
-		assert.Equal(t, sceneID, createResp.CreateCue.Scene.ID)
+		assert.Equal(t, lookID, createResp.CreateCue.Look.ID)
 
 		cueID := createResp.CreateCue.ID
 
@@ -425,7 +425,7 @@ func TestCueCRUD(t *testing.T) {
 				"id": cueID,
 				"input": map[string]interface{}{
 					"cueListId":   cueListID,
-					"sceneId":     sceneID,
+					"lookId":      lookID,
 					"name":        "Updated Opening Cue",
 					"cueNumber":   1.0,
 					"fadeInTime":  5.0,
@@ -504,8 +504,8 @@ func TestCueOrdering(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// Create scene and cue list
-	sceneID := createTestScene(t, client, ctx, projectID, "Ordering Test Scene")
+	// Create look and cue list
+	lookID := createTestLook(t, client, ctx, projectID, "Ordering Test Look")
 
 	var cueListResp struct {
 		CreateCueList struct {
@@ -543,7 +543,7 @@ func TestCueOrdering(t *testing.T) {
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"cueListId":   cueListID,
-				"sceneId":     sceneID,
+				"lookId":      lookID,
 				"name":        "Cue " + string(rune('A'+i)),
 				"cueNumber":   float64(i + 1),
 				"fadeInTime":  1.0,
@@ -647,8 +647,8 @@ func TestBulkCueOperations(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// Create scene and cue list
-	sceneID := createTestScene(t, client, ctx, projectID, "Bulk Cue Test Scene")
+	// Create look and cue list
+	lookID := createTestLook(t, client, ctx, projectID, "Bulk Cue Test Look")
 
 	var cueListResp struct {
 		CreateCueList struct {
@@ -686,7 +686,7 @@ func TestBulkCueOperations(t *testing.T) {
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"cueListId":   cueListID,
-				"sceneId":     sceneID,
+				"lookId":      lookID,
 				"name":        "Bulk Cue " + string(rune('A'+i)),
 				"cueNumber":   float64(i + 1),
 				"fadeInTime":  1.0,
@@ -733,8 +733,8 @@ func TestBulkCueOperations(t *testing.T) {
 	})
 }
 
-// TestCueListWithSceneDetails tests fetching cue list with scene details.
-func TestCueListWithSceneDetails(t *testing.T) {
+// TestCueListWithLookDetails tests fetching cue list with look details.
+func TestCueListWithLookDetails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -752,7 +752,7 @@ func TestCueListWithSceneDetails(t *testing.T) {
 			createProject(input: $input) { id }
 		}
 	`, map[string]interface{}{
-		"input": map[string]interface{}{"name": "Scene Details Test Project"},
+		"input": map[string]interface{}{"name": "Look Details Test Project"},
 	}, &projectResp)
 
 	require.NoError(t, err)
@@ -762,7 +762,7 @@ func TestCueListWithSceneDetails(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// Create fixture and scene with values
+	// Create fixture and look with values
 	definitionID := getOrCreateFixtureDefinition(t, client, ctx)
 
 	var fixtureResp struct {
@@ -779,7 +779,7 @@ func TestCueListWithSceneDetails(t *testing.T) {
 		"input": map[string]interface{}{
 			"projectId":    projectID,
 			"definitionId": definitionID,
-			"name":         "Scene Details Fixture",
+			"name":         "Look Details Fixture",
 			"universe":     1,
 			"startChannel": 1,
 		},
@@ -788,20 +788,20 @@ func TestCueListWithSceneDetails(t *testing.T) {
 	require.NoError(t, err)
 	fixtureID := fixtureResp.CreateFixtureInstance.ID
 
-	var sceneResp struct {
-		CreateScene struct {
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Scene Details Test Scene",
+			"name":      "Look Details Test Look",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixtureID,
@@ -811,10 +811,10 @@ func TestCueListWithSceneDetails(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
 	// Create cue list with cue
 	var cueListResp struct {
@@ -830,7 +830,7 @@ func TestCueListWithSceneDetails(t *testing.T) {
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Scene Details Test List",
+			"name":      "Look Details Test List",
 		},
 	}, &cueListResp)
 
@@ -844,7 +844,7 @@ func TestCueListWithSceneDetails(t *testing.T) {
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"cueListId":   cueListID,
-			"sceneId":     sceneID,
+			"lookId":      lookID,
 			"name":        "Detailed Cue",
 			"cueNumber":   1.0,
 			"fadeInTime":  2.0,
@@ -854,14 +854,14 @@ func TestCueListWithSceneDetails(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// Query cue list with scene details
+	// Query cue list with look details
 	var detailsResp struct {
 		CueList struct {
 			ID   string `json:"id"`
 			Cues []struct {
-				ID    string `json:"id"`
-				Name  string `json:"name"`
-				Scene struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+				Look struct {
 					ID            string `json:"id"`
 					Name          string `json:"name"`
 					FixtureValues []struct {
@@ -874,19 +874,19 @@ func TestCueListWithSceneDetails(t *testing.T) {
 							Value  int `json:"value"`
 						} `json:"channels"`
 					} `json:"fixtureValues"`
-				} `json:"scene"`
+				} `json:"look"`
 			} `json:"cues"`
 		} `json:"cueList"`
 	}
 
 	err = client.Query(ctx, `
-		query GetCueListWithDetails($id: ID!, $includeSceneDetails: Boolean) {
-			cueList(id: $id, includeSceneDetails: $includeSceneDetails) {
+		query GetCueListWithDetails($id: ID!, $includeLookDetails: Boolean) {
+			cueList(id: $id, includeLookDetails: $includeLookDetails) {
 				id
 				cues {
 					id
 					name
-					scene {
+					look {
 						id
 						name
 						fixtureValues {
@@ -904,19 +904,19 @@ func TestCueListWithSceneDetails(t *testing.T) {
 			}
 		}
 	`, map[string]interface{}{
-		"id":                  cueListID,
-		"includeSceneDetails": true,
+		"id":                 cueListID,
+		"includeLookDetails": true,
 	}, &detailsResp)
 
 	require.NoError(t, err)
 	assert.Len(t, detailsResp.CueList.Cues, 1)
 	cue := detailsResp.CueList.Cues[0]
-	assert.Equal(t, sceneID, cue.Scene.ID)
-	assert.Len(t, cue.Scene.FixtureValues, 1)
-	assert.Equal(t, fixtureID, cue.Scene.FixtureValues[0].Fixture.ID)
-	assert.Len(t, cue.Scene.FixtureValues[0].Channels, 1)
-	assert.Equal(t, 0, cue.Scene.FixtureValues[0].Channels[0].Offset)
-	assert.Equal(t, 200, cue.Scene.FixtureValues[0].Channels[0].Value)
+	assert.Equal(t, lookID, cue.Look.ID)
+	assert.Len(t, cue.Look.FixtureValues, 1)
+	assert.Equal(t, fixtureID, cue.Look.FixtureValues[0].Fixture.ID)
+	assert.Len(t, cue.Look.FixtureValues[0].Channels, 1)
+	assert.Equal(t, 0, cue.Look.FixtureValues[0].Channels[0].Offset)
+	assert.Equal(t, 200, cue.Look.FixtureValues[0].Channels[0].Value)
 }
 
 // TestSearchCues tests searching cues within a cue list.
@@ -948,8 +948,8 @@ func TestSearchCues(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// Create scene and cue list
-	sceneID := createTestScene(t, client, ctx, projectID, "Search Test Scene")
+	// Create look and cue list
+	lookID := createTestLook(t, client, ctx, projectID, "Search Test Look")
 
 	var cueListResp struct {
 		CreateCueList struct {
@@ -972,7 +972,7 @@ func TestSearchCues(t *testing.T) {
 	cueListID := cueListResp.CreateCueList.ID
 
 	// Create cues with different names
-	cueNames := []string{"Opening Scene", "Blackout", "Final Bow", "Scene Change"}
+	cueNames := []string{"Opening Look", "Blackout", "Final Bow", "Look Change"}
 	for i, name := range cueNames {
 		err := client.Mutate(ctx, `
 			mutation CreateCue($input: CreateCueInput!) {
@@ -981,7 +981,7 @@ func TestSearchCues(t *testing.T) {
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"cueListId":   cueListID,
-				"sceneId":     sceneID,
+				"lookId":      lookID,
 				"name":        name,
 				"cueNumber":   float64(i + 1),
 				"fadeInTime":  1.0,
@@ -991,7 +991,7 @@ func TestSearchCues(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Search for cues containing "Scene"
+	// Search for cues containing "Look"
 	var searchResp struct {
 		SearchCues struct {
 			Cues []struct {
@@ -1018,13 +1018,13 @@ func TestSearchCues(t *testing.T) {
 		}
 	`, map[string]interface{}{
 		"cueListId": cueListID,
-		"query":     "Scene",
+		"query":     "Look",
 	}, &searchResp)
 
 	require.NoError(t, err)
 	assert.Equal(t, 2, searchResp.SearchCues.Pagination.Total)
 	for _, cue := range searchResp.SearchCues.Cues {
-		assert.Contains(t, cue.Name, "Scene")
+		assert.Contains(t, cue.Name, "Look")
 	}
 }
 
@@ -1066,8 +1066,8 @@ func TestCueSkip(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// Create scene
-	sceneID := createTestScene(t, client, ctx, projectID, "Skip Test Scene")
+	// Create look
+	lookID := createTestLook(t, client, ctx, projectID, "Skip Test Look")
 
 	// Create cue list
 	var cueListResp struct {
@@ -1113,7 +1113,7 @@ func TestCueSkip(t *testing.T) {
 				"cueListId":   cueListID,
 				"name":        "Skipped Cue",
 				"cueNumber":   1.0,
-				"sceneId":     sceneID,
+				"lookId":      lookID,
 				"fadeInTime":  3.0,
 				"fadeOutTime": 2.0,
 				"skip":        true,
@@ -1148,7 +1148,7 @@ func TestCueSkip(t *testing.T) {
 				"cueListId":   cueListID,
 				"name":        "Normal Cue",
 				"cueNumber":   2.0,
-				"sceneId":     sceneID,
+				"lookId":      lookID,
 				"fadeInTime":  3.0,
 				"fadeOutTime": 2.0,
 			},
@@ -1269,7 +1269,7 @@ func TestCueSkip(t *testing.T) {
 				"cueListId":   cueListID,
 				"name":        "Skipped Cue",
 				"cueNumber":   1.0,
-				"sceneId":     sceneID,
+				"lookId":      lookID,
 				"fadeInTime":  3.0,
 				"fadeOutTime": 2.0,
 				"skip":        true,
@@ -1296,7 +1296,7 @@ func TestCueSkip(t *testing.T) {
 			"cueListId":   cueListID,
 			"name":        "Third Cue",
 			"cueNumber":   3.0,
-			"sceneId":     sceneID,
+			"lookId":      lookID,
 			"fadeInTime":  3.0,
 			"fadeOutTime": 2.0,
 		},

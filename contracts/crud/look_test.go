@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// createTestFixture creates a fixture instance for scene tests.
+// createTestFixture creates a fixture instance for look tests.
 func createTestFixture(t *testing.T, client *graphql.Client, ctx context.Context, projectID string, name string, startChannel int) string {
 	definitionID := getOrCreateFixtureDefinition(t, client, ctx)
 
@@ -39,8 +39,8 @@ func createTestFixture(t *testing.T, client *graphql.Client, ctx context.Context
 	return resp.CreateFixtureInstance.ID
 }
 
-// TestSceneCRUD tests all scene CRUD operations.
-func TestSceneCRUD(t *testing.T) {
+// TestLookCRUD tests all look CRUD operations.
+func TestLookCRUD(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -58,7 +58,7 @@ func TestSceneCRUD(t *testing.T) {
 			createProject(input: $input) { id }
 		}
 	`, map[string]interface{}{
-		"input": map[string]interface{}{"name": "Scene CRUD Test Project"},
+		"input": map[string]interface{}{"name": "Look CRUD Test Project"},
 	}, &projectResp)
 
 	require.NoError(t, err)
@@ -68,14 +68,14 @@ func TestSceneCRUD(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// Create fixtures for scenes
-	fixture1ID := createTestFixture(t, client, ctx, projectID, "Scene Test Fixture 1", 1)
-	fixture2ID := createTestFixture(t, client, ctx, projectID, "Scene Test Fixture 2", 10)
+	// Create fixtures for looks
+	fixture1ID := createTestFixture(t, client, ctx, projectID, "Look Test Fixture 1", 1)
+	fixture2ID := createTestFixture(t, client, ctx, projectID, "Look Test Fixture 2", 10)
 
 	// CREATE
-	t.Run("CreateScene", func(t *testing.T) {
+	t.Run("CreateLook", func(t *testing.T) {
 		var createResp struct {
-			CreateScene struct {
+			CreateLook struct {
 				ID            string  `json:"id"`
 				Name          string  `json:"name"`
 				Description   *string `json:"description"`
@@ -90,12 +90,12 @@ func TestSceneCRUD(t *testing.T) {
 						Value  int `json:"value"`
 					} `json:"channels"`
 				} `json:"fixtureValues"`
-			} `json:"createScene"`
+			} `json:"createLook"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation CreateScene($input: CreateSceneInput!) {
-				createScene(input: $input) {
+			mutation CreateLook($input: CreateLookInput!) {
+				createLook(input: $input) {
 					id
 					name
 					description
@@ -115,7 +115,7 @@ func TestSceneCRUD(t *testing.T) {
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"projectId":   projectID,
-				"name":        "Full Bright Scene",
+				"name":        "Full Bright Look",
 				"description": "All fixtures at full brightness",
 				"fixtureValues": []map[string]interface{}{
 					{
@@ -135,17 +135,17 @@ func TestSceneCRUD(t *testing.T) {
 		}, &createResp)
 
 		require.NoError(t, err)
-		assert.NotEmpty(t, createResp.CreateScene.ID)
-		assert.Equal(t, "Full Bright Scene", createResp.CreateScene.Name)
-		assert.NotNil(t, createResp.CreateScene.Description)
-		assert.Len(t, createResp.CreateScene.FixtureValues, 2)
+		assert.NotEmpty(t, createResp.CreateLook.ID)
+		assert.Equal(t, "Full Bright Look", createResp.CreateLook.Name)
+		assert.NotNil(t, createResp.CreateLook.Description)
+		assert.Len(t, createResp.CreateLook.FixtureValues, 2)
 
-		sceneID := createResp.CreateScene.ID
+		lookID := createResp.CreateLook.ID
 
 		// READ
-		t.Run("ReadScene", func(t *testing.T) {
+		t.Run("ReadLook", func(t *testing.T) {
 			var readResp struct {
-				Scene struct {
+				Look struct {
 					ID            string  `json:"id"`
 					Name          string  `json:"name"`
 					Description   *string `json:"description"`
@@ -158,12 +158,12 @@ func TestSceneCRUD(t *testing.T) {
 							Value  int `json:"value"`
 						} `json:"channels"`
 					} `json:"fixtureValues"`
-				} `json:"scene"`
+				} `json:"look"`
 			}
 
 			err := client.Query(ctx, `
-				query GetScene($id: ID!) {
-					scene(id: $id) {
+				query GetLook($id: ID!) {
+					look(id: $id) {
 						id
 						name
 						description
@@ -178,18 +178,18 @@ func TestSceneCRUD(t *testing.T) {
 						}
 					}
 				}
-			`, map[string]interface{}{"id": sceneID}, &readResp)
+			`, map[string]interface{}{"id": lookID}, &readResp)
 
 			require.NoError(t, err)
-			assert.Equal(t, sceneID, readResp.Scene.ID)
-			assert.Equal(t, "Full Bright Scene", readResp.Scene.Name)
-			assert.NotEmpty(t, readResp.Scene.CreatedAt)
+			assert.Equal(t, lookID, readResp.Look.ID)
+			assert.Equal(t, "Full Bright Look", readResp.Look.Name)
+			assert.NotEmpty(t, readResp.Look.CreatedAt)
 		})
 
 		// UPDATE
-		t.Run("UpdateScene", func(t *testing.T) {
+		t.Run("UpdateLook", func(t *testing.T) {
 			var updateResp struct {
-				UpdateScene struct {
+				UpdateLook struct {
 					ID            string  `json:"id"`
 					Name          string  `json:"name"`
 					Description   *string `json:"description"`
@@ -199,12 +199,12 @@ func TestSceneCRUD(t *testing.T) {
 							Value  int `json:"value"`
 						} `json:"channels"`
 					} `json:"fixtureValues"`
-				} `json:"updateScene"`
+				} `json:"updateLook"`
 			}
 
 			err := client.Mutate(ctx, `
-				mutation UpdateScene($id: ID!, $input: UpdateSceneInput!) {
-					updateScene(id: $id, input: $input) {
+				mutation UpdateLook($id: ID!, $input: UpdateLookInput!) {
+					updateLook(id: $id, input: $input) {
 						id
 						name
 						description
@@ -217,9 +217,9 @@ func TestSceneCRUD(t *testing.T) {
 					}
 				}
 			`, map[string]interface{}{
-				"id": sceneID,
+				"id": lookID,
 				"input": map[string]interface{}{
-					"name":        "Half Bright Scene",
+					"name":        "Half Bright Look",
 					"description": "All fixtures at half brightness",
 					"fixtureValues": []map[string]interface{}{
 						{
@@ -239,8 +239,8 @@ func TestSceneCRUD(t *testing.T) {
 			}, &updateResp)
 
 			require.NoError(t, err)
-			assert.Equal(t, "Half Bright Scene", updateResp.UpdateScene.Name)
-			for _, fv := range updateResp.UpdateScene.FixtureValues {
+			assert.Equal(t, "Half Bright Look", updateResp.UpdateLook.Name)
+			for _, fv := range updateResp.UpdateLook.FixtureValues {
 				assert.Len(t, fv.Channels, 1)
 				assert.Equal(t, 0, fv.Channels[0].Offset)
 				assert.Equal(t, 128, fv.Channels[0].Value)
@@ -248,26 +248,26 @@ func TestSceneCRUD(t *testing.T) {
 		})
 
 		// LIST with pagination and filter
-		t.Run("ListScenes", func(t *testing.T) {
+		t.Run("ListLooks", func(t *testing.T) {
 			var listResp struct {
-				Scenes struct {
-					Scenes []struct {
+				Looks struct {
+					Looks []struct {
 						ID           string  `json:"id"`
 						Name         string  `json:"name"`
 						FixtureCount int     `json:"fixtureCount"`
 						Description  *string `json:"description"`
-					} `json:"scenes"`
+					} `json:"looks"`
 					Pagination struct {
 						Total   int  `json:"total"`
 						HasMore bool `json:"hasMore"`
 					} `json:"pagination"`
-				} `json:"scenes"`
+				} `json:"looks"`
 			}
 
 			err := client.Query(ctx, `
-				query ListScenes($projectId: ID!, $filter: SceneFilterInput, $sortBy: SceneSortField) {
-					scenes(projectId: $projectId, filter: $filter, sortBy: $sortBy) {
-						scenes {
+				query ListLooks($projectId: ID!, $filter: LookFilterInput, $sortBy: LookSortField) {
+					looks(projectId: $projectId, filter: $filter, sortBy: $sortBy) {
+						looks {
 							id
 							name
 							fixtureCount
@@ -288,10 +288,10 @@ func TestSceneCRUD(t *testing.T) {
 			}, &listResp)
 
 			require.NoError(t, err)
-			assert.GreaterOrEqual(t, listResp.Scenes.Pagination.Total, 1)
+			assert.GreaterOrEqual(t, listResp.Looks.Pagination.Total, 1)
 			found := false
-			for _, s := range listResp.Scenes.Scenes {
-				if s.ID == sceneID {
+			for _, s := range listResp.Looks.Looks {
+				if s.ID == lookID {
 					found = true
 					assert.Contains(t, s.Name, "Bright")
 					break
@@ -301,44 +301,44 @@ func TestSceneCRUD(t *testing.T) {
 		})
 
 		// DELETE
-		t.Run("DeleteScene", func(t *testing.T) {
+		t.Run("DeleteLook", func(t *testing.T) {
 			var deleteResp struct {
-				DeleteScene bool `json:"deleteScene"`
+				DeleteLook bool `json:"deleteLook"`
 			}
 
 			err := client.Mutate(ctx, `
-				mutation DeleteScene($id: ID!) {
-					deleteScene(id: $id)
+				mutation DeleteLook($id: ID!) {
+					deleteLook(id: $id)
 				}
-			`, map[string]interface{}{"id": sceneID}, &deleteResp)
+			`, map[string]interface{}{"id": lookID}, &deleteResp)
 
 			require.NoError(t, err)
-			assert.True(t, deleteResp.DeleteScene)
+			assert.True(t, deleteResp.DeleteLook)
 
 			// Verify deletion
 			var verifyResp struct {
-				Scene *struct {
+				Look *struct {
 					ID string `json:"id"`
-				} `json:"scene"`
+				} `json:"look"`
 			}
 
 			err = client.Query(ctx, `
-				query GetScene($id: ID!) {
-					scene(id: $id) {
+				query GetLook($id: ID!) {
+					look(id: $id) {
 						id
 					}
 				}
-			`, map[string]interface{}{"id": sceneID}, &verifyResp)
+			`, map[string]interface{}{"id": lookID}, &verifyResp)
 
 			if err == nil {
-				assert.Nil(t, verifyResp.Scene, "Deleted scene should not be found")
+				assert.Nil(t, verifyResp.Look, "Deleted look should not be found")
 			}
 		})
 	})
 }
 
-// TestSceneFixtureManagement tests adding and removing fixtures from scenes.
-func TestSceneFixtureManagement(t *testing.T) {
+// TestLookFixtureManagement tests adding and removing fixtures from looks.
+func TestLookFixtureManagement(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -356,7 +356,7 @@ func TestSceneFixtureManagement(t *testing.T) {
 			createProject(input: $input) { id }
 		}
 	`, map[string]interface{}{
-		"input": map[string]interface{}{"name": "Scene Fixture Management Test"},
+		"input": map[string]interface{}{"name": "Look Fixture Management Test"},
 	}, &projectResp)
 
 	require.NoError(t, err)
@@ -371,21 +371,21 @@ func TestSceneFixtureManagement(t *testing.T) {
 	fixture2ID := createTestFixture(t, client, ctx, projectID, "Managed Fixture 2", 10)
 	fixture3ID := createTestFixture(t, client, ctx, projectID, "Managed Fixture 3", 20)
 
-	// Create scene with one fixture
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look with one fixture
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Fixture Management Scene",
+			"name":      "Fixture Management Look",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture1ID,
@@ -395,15 +395,15 @@ func TestSceneFixtureManagement(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
-	// ADD FIXTURES TO SCENE
-	t.Run("AddFixturesToScene", func(t *testing.T) {
+	// ADD FIXTURES TO LOOK
+	t.Run("AddFixturesToLook", func(t *testing.T) {
 		var addResp struct {
-			AddFixturesToScene struct {
+			AddFixturesToLook struct {
 				ID            string `json:"id"`
 				FixtureValues []struct {
 					Fixture struct {
@@ -414,12 +414,12 @@ func TestSceneFixtureManagement(t *testing.T) {
 						Value  int `json:"value"`
 					} `json:"channels"`
 				} `json:"fixtureValues"`
-			} `json:"addFixturesToScene"`
+			} `json:"addFixturesToLook"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation AddFixtures($sceneId: ID!, $fixtureValues: [FixtureValueInput!]!) {
-				addFixturesToScene(sceneId: $sceneId, fixtureValues: $fixtureValues) {
+			mutation AddFixtures($lookId: ID!, $fixtureValues: [FixtureValueInput!]!) {
+				addFixturesToLook(lookId: $lookId, fixtureValues: $fixtureValues) {
 					id
 					fixtureValues {
 						fixture {
@@ -433,7 +433,7 @@ func TestSceneFixtureManagement(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"sceneId": sceneID,
+			"lookId": lookID,
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture2ID,
@@ -451,25 +451,25 @@ func TestSceneFixtureManagement(t *testing.T) {
 		}, &addResp)
 
 		require.NoError(t, err)
-		assert.Len(t, addResp.AddFixturesToScene.FixtureValues, 3)
+		assert.Len(t, addResp.AddFixturesToLook.FixtureValues, 3)
 	})
 
-	// REMOVE FIXTURES FROM SCENE
-	t.Run("RemoveFixturesFromScene", func(t *testing.T) {
+	// REMOVE FIXTURES FROM LOOK
+	t.Run("RemoveFixturesFromLook", func(t *testing.T) {
 		var removeResp struct {
-			RemoveFixturesFromScene struct {
+			RemoveFixturesFromLook struct {
 				ID            string `json:"id"`
 				FixtureValues []struct {
 					Fixture struct {
 						ID string `json:"id"`
 					} `json:"fixture"`
 				} `json:"fixtureValues"`
-			} `json:"removeFixturesFromScene"`
+			} `json:"removeFixturesFromLook"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation RemoveFixtures($sceneId: ID!, $fixtureIds: [ID!]!) {
-				removeFixturesFromScene(sceneId: $sceneId, fixtureIds: $fixtureIds) {
+			mutation RemoveFixtures($lookId: ID!, $fixtureIds: [ID!]!) {
+				removeFixturesFromLook(lookId: $lookId, fixtureIds: $fixtureIds) {
 					id
 					fixtureValues {
 						fixture {
@@ -479,27 +479,27 @@ func TestSceneFixtureManagement(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"sceneId":    sceneID,
+			"lookId":     lookID,
 			"fixtureIds": []string{fixture3ID},
 		}, &removeResp)
 
 		require.NoError(t, err)
-		assert.Len(t, removeResp.RemoveFixturesFromScene.FixtureValues, 2)
+		assert.Len(t, removeResp.RemoveFixturesFromLook.FixtureValues, 2)
 
-		// Verify fixture3 is no longer in scene
+		// Verify fixture3 is no longer in look
 		found := false
-		for _, fv := range removeResp.RemoveFixturesFromScene.FixtureValues {
+		for _, fv := range removeResp.RemoveFixturesFromLook.FixtureValues {
 			if fv.Fixture.ID == fixture3ID {
 				found = true
 				break
 			}
 		}
-		assert.False(t, found, "Removed fixture should not be in scene")
+		assert.False(t, found, "Removed fixture should not be in look")
 	})
 }
 
-// TestSceneCloneAndDuplicate tests cloning and duplicating scenes.
-func TestSceneCloneAndDuplicate(t *testing.T) {
+// TestLookCloneAndDuplicate tests cloning and duplicating looks.
+func TestLookCloneAndDuplicate(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -517,7 +517,7 @@ func TestSceneCloneAndDuplicate(t *testing.T) {
 			createProject(input: $input) { id }
 		}
 	`, map[string]interface{}{
-		"input": map[string]interface{}{"name": "Scene Clone Test Project"},
+		"input": map[string]interface{}{"name": "Look Clone Test Project"},
 	}, &projectResp)
 
 	require.NoError(t, err)
@@ -527,24 +527,24 @@ func TestSceneCloneAndDuplicate(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// Create fixture and scene
+	// Create fixture and look
 	fixtureID := createTestFixture(t, client, ctx, projectID, "Clone Test Fixture", 1)
 
-	var sceneResp struct {
-		CreateScene struct {
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId":   projectID,
-			"name":        "Original Scene",
-			"description": "Scene to be cloned",
+			"name":        "Original Look",
+			"description": "Look to be cloned",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixtureID,
@@ -554,14 +554,14 @@ func TestSceneCloneAndDuplicate(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
-	originalSceneID := sceneResp.CreateScene.ID
+	originalLookID := lookResp.CreateLook.ID
 
-	// Verify original scene has the channels before cloning
+	// Verify original look has the channels before cloning
 	var verifyResp struct {
-		Scene struct {
+		Look struct {
 			ID            string `json:"id"`
 			FixtureValues []struct {
 				Channels []struct {
@@ -569,11 +569,11 @@ func TestSceneCloneAndDuplicate(t *testing.T) {
 					Value  int `json:"value"`
 				} `json:"channels"`
 			} `json:"fixtureValues"`
-		} `json:"scene"`
+		} `json:"look"`
 	}
 	err = client.Query(ctx, `
-		query GetScene($id: ID!) {
-			scene(id: $id) {
+		query GetLook($id: ID!) {
+			look(id: $id) {
 				id
 				fixtureValues {
 					channels {
@@ -583,15 +583,15 @@ func TestSceneCloneAndDuplicate(t *testing.T) {
 				}
 			}
 		}
-	`, map[string]interface{}{"id": originalSceneID}, &verifyResp)
+	`, map[string]interface{}{"id": originalLookID}, &verifyResp)
 	require.NoError(t, err)
-	require.Len(t, verifyResp.Scene.FixtureValues, 1, "Original scene should have 1 fixture")
-	require.Len(t, verifyResp.Scene.FixtureValues[0].Channels, 1, "Original scene fixture should have 1 channel")
+	require.Len(t, verifyResp.Look.FixtureValues, 1, "Original look should have 1 fixture")
+	require.Len(t, verifyResp.Look.FixtureValues[0].Channels, 1, "Original look fixture should have 1 channel")
 
-	// CLONE SCENE with new name
-	t.Run("CloneScene", func(t *testing.T) {
+	// CLONE LOOK with new name
+	t.Run("CloneLook", func(t *testing.T) {
 		var cloneResp struct {
-			CloneScene struct {
+			CloneLook struct {
 				ID            string `json:"id"`
 				Name          string `json:"name"`
 				FixtureValues []struct {
@@ -600,12 +600,12 @@ func TestSceneCloneAndDuplicate(t *testing.T) {
 						Value  int `json:"value"`
 					} `json:"channels"`
 				} `json:"fixtureValues"`
-			} `json:"cloneScene"`
+			} `json:"cloneLook"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation CloneScene($sceneId: ID!, $newName: String!) {
-				cloneScene(sceneId: $sceneId, newName: $newName) {
+			mutation CloneLook($lookId: ID!, $newName: String!) {
+				cloneLook(lookId: $lookId, newName: $newName) {
 					id
 					name
 					fixtureValues {
@@ -617,60 +617,60 @@ func TestSceneCloneAndDuplicate(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"sceneId": originalSceneID,
-			"newName": "Cloned Scene",
+			"lookId":  originalLookID,
+			"newName": "Cloned Look",
 		}, &cloneResp)
 
 		require.NoError(t, err)
-		assert.NotEqual(t, originalSceneID, cloneResp.CloneScene.ID)
-		assert.Equal(t, "Cloned Scene", cloneResp.CloneScene.Name)
+		assert.NotEqual(t, originalLookID, cloneResp.CloneLook.ID)
+		assert.Equal(t, "Cloned Look", cloneResp.CloneLook.Name)
 
-		// KNOWN BACKEND ISSUE: cloneScene is not properly copying sparse channel data.
-		// The original scene has the fixture values with channels (verified above),
-		// but the cloned scene returns an empty fixtureValues array.
+		// KNOWN BACKEND ISSUE: cloneLook is not properly copying sparse channel data.
+		// The original look has the fixture values with channels (verified above),
+		// but the cloned look returns an empty fixtureValues array.
 		// This needs to be fixed in the lacylights-go backend.
 		// As a workaround, we skip the channel value assertions in this test.
-		if len(cloneResp.CloneScene.FixtureValues) == 0 {
-			t.Skip("KNOWN ISSUE: cloneScene not returning fixture values with sparse channels")
+		if len(cloneResp.CloneLook.FixtureValues) == 0 {
+			t.Skip("KNOWN ISSUE: cloneLook not returning fixture values with sparse channels")
 			return
 		}
-		if len(cloneResp.CloneScene.FixtureValues[0].Channels) == 0 {
-			t.Skip("KNOWN ISSUE: cloneScene not returning channels with sparse channel format")
+		if len(cloneResp.CloneLook.FixtureValues[0].Channels) == 0 {
+			t.Skip("KNOWN ISSUE: cloneLook not returning channels with sparse channel format")
 			return
 		}
-		require.Len(t, cloneResp.CloneScene.FixtureValues[0].Channels, 1)
-		assert.Equal(t, 0, cloneResp.CloneScene.FixtureValues[0].Channels[0].Offset)
-		assert.Equal(t, 200, cloneResp.CloneScene.FixtureValues[0].Channels[0].Value)
+		require.Len(t, cloneResp.CloneLook.FixtureValues[0].Channels, 1)
+		assert.Equal(t, 0, cloneResp.CloneLook.FixtureValues[0].Channels[0].Offset)
+		assert.Equal(t, 200, cloneResp.CloneLook.FixtureValues[0].Channels[0].Value)
 	})
 
-	// DUPLICATE SCENE (auto-generated name)
-	t.Run("DuplicateScene", func(t *testing.T) {
+	// DUPLICATE LOOK (auto-generated name)
+	t.Run("DuplicateLook", func(t *testing.T) {
 		var dupResp struct {
-			DuplicateScene struct {
+			DuplicateLook struct {
 				ID   string `json:"id"`
 				Name string `json:"name"`
-			} `json:"duplicateScene"`
+			} `json:"duplicateLook"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation DuplicateScene($id: ID!) {
-				duplicateScene(id: $id) {
+			mutation DuplicateLook($id: ID!) {
+				duplicateLook(id: $id) {
 					id
 					name
 				}
 			}
 		`, map[string]interface{}{
-			"id": originalSceneID,
+			"id": originalLookID,
 		}, &dupResp)
 
 		require.NoError(t, err)
-		assert.NotEqual(t, originalSceneID, dupResp.DuplicateScene.ID)
-		assert.Contains(t, dupResp.DuplicateScene.Name, "Copy")
+		assert.NotEqual(t, originalLookID, dupResp.DuplicateLook.ID)
+		assert.Contains(t, dupResp.DuplicateLook.Name, "Copy")
 	})
 }
 
-// TestSceneComparison tests comparing two scenes.
-func TestSceneComparison(t *testing.T) {
+// TestLookComparison tests comparing two looks.
+func TestLookComparison(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -688,7 +688,7 @@ func TestSceneComparison(t *testing.T) {
 			createProject(input: $input) { id }
 		}
 	`, map[string]interface{}{
-		"input": map[string]interface{}{"name": "Scene Compare Test Project"},
+		"input": map[string]interface{}{"name": "Look Compare Test Project"},
 	}, &projectResp)
 
 	require.NoError(t, err)
@@ -702,21 +702,21 @@ func TestSceneComparison(t *testing.T) {
 	fixture1ID := createTestFixture(t, client, ctx, projectID, "Compare Fixture 1", 1)
 	fixture2ID := createTestFixture(t, client, ctx, projectID, "Compare Fixture 2", 10)
 
-	// Create two scenes with different values
-	var scene1Resp struct {
-		CreateScene struct {
+	// Create two looks with different values
+	var look1Resp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Scene 1",
+			"name":      "Look 1",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture1ID,
@@ -732,71 +732,71 @@ func TestSceneComparison(t *testing.T) {
 				},
 			},
 		},
-	}, &scene1Resp)
+	}, &look1Resp)
 
 	require.NoError(t, err)
-	scene1ID := scene1Resp.CreateScene.ID
+	look1ID := look1Resp.CreateLook.ID
 
-	var scene2Resp struct {
-		CreateScene struct {
+	var look2Resp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Scene 2",
+			"name":      "Look 2",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture1ID,
 					"channels": []map[string]interface{}{
-						{"offset": 0, "value": 100}, // Different from Scene 1
+						{"offset": 0, "value": 100}, // Different from Look 1
 					},
 				},
-				// fixture2 is NOT in this scene
+				// fixture2 is NOT in this look
 			},
 		},
-	}, &scene2Resp)
+	}, &look2Resp)
 
 	require.NoError(t, err)
-	scene2ID := scene2Resp.CreateScene.ID
+	look2ID := look2Resp.CreateLook.ID
 
-	// Compare scenes
+	// Compare looks
 	var compareResp struct {
-		CompareScenes struct {
-			Scene1 struct {
+		CompareLooks struct {
+			Look1 struct {
 				ID   string `json:"id"`
 				Name string `json:"name"`
-			} `json:"scene1"`
-			Scene2 struct {
+			} `json:"look1"`
+			Look2 struct {
 				ID   string `json:"id"`
 				Name string `json:"name"`
-			} `json:"scene2"`
-			IdenticalFixtureCount  int `json:"identicalFixtureCount"`
-			DifferentFixtureCount  int `json:"differentFixtureCount"`
-			Differences            []struct {
-				FixtureID      string  `json:"fixtureId"`
-				FixtureName    string  `json:"fixtureName"`
-				DifferenceType string  `json:"differenceType"`
-				Scene1Values   []int   `json:"scene1Values"`
-				Scene2Values   []int   `json:"scene2Values"`
+			} `json:"look2"`
+			IdenticalFixtureCount int `json:"identicalFixtureCount"`
+			DifferentFixtureCount int `json:"differentFixtureCount"`
+			Differences           []struct {
+				FixtureID      string `json:"fixtureId"`
+				FixtureName    string `json:"fixtureName"`
+				DifferenceType string `json:"differenceType"`
+				Look1Values    []int  `json:"look1Values"`
+				Look2Values    []int  `json:"look2Values"`
 			} `json:"differences"`
-		} `json:"compareScenes"`
+		} `json:"compareLooks"`
 	}
 
 	err = client.Query(ctx, `
-		query CompareScenes($sceneId1: ID!, $sceneId2: ID!) {
-			compareScenes(sceneId1: $sceneId1, sceneId2: $sceneId2) {
-				scene1 {
+		query CompareLooks($lookId1: ID!, $lookId2: ID!) {
+			compareLooks(lookId1: $lookId1, lookId2: $lookId2) {
+				look1 {
 					id
 					name
 				}
-				scene2 {
+				look2 {
 					id
 					name
 				}
@@ -806,27 +806,27 @@ func TestSceneComparison(t *testing.T) {
 					fixtureId
 					fixtureName
 					differenceType
-					scene1Values
-					scene2Values
+					look1Values
+					look2Values
 				}
 			}
 		}
 	`, map[string]interface{}{
-		"sceneId1": scene1ID,
-		"sceneId2": scene2ID,
+		"lookId1": look1ID,
+		"lookId2": look2ID,
 	}, &compareResp)
 
 	require.NoError(t, err)
-	assert.Equal(t, scene1ID, compareResp.CompareScenes.Scene1.ID)
-	assert.Equal(t, scene2ID, compareResp.CompareScenes.Scene2.ID)
-	assert.NotEmpty(t, compareResp.CompareScenes.Differences)
+	assert.Equal(t, look1ID, compareResp.CompareLooks.Look1.ID)
+	assert.Equal(t, look2ID, compareResp.CompareLooks.Look2.ID)
+	assert.NotEmpty(t, compareResp.CompareLooks.Differences)
 
-	// Should have differences for fixture1 (values changed) and fixture2 (only in scene1)
-	assert.GreaterOrEqual(t, compareResp.CompareScenes.DifferentFixtureCount, 1)
+	// Should have differences for fixture1 (values changed) and fixture2 (only in look1)
+	assert.GreaterOrEqual(t, compareResp.CompareLooks.DifferentFixtureCount, 1)
 }
 
-// TestSceneUsage tests querying scene usage in cue lists.
-func TestSceneUsage(t *testing.T) {
+// TestLookUsage tests querying look usage in cue lists.
+func TestLookUsage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -844,7 +844,7 @@ func TestSceneUsage(t *testing.T) {
 			createProject(input: $input) { id }
 		}
 	`, map[string]interface{}{
-		"input": map[string]interface{}{"name": "Scene Usage Test Project"},
+		"input": map[string]interface{}{"name": "Look Usage Test Project"},
 	}, &projectResp)
 
 	require.NoError(t, err)
@@ -854,48 +854,48 @@ func TestSceneUsage(t *testing.T) {
 			map[string]interface{}{"id": projectID}, nil)
 	}()
 
-	// Create scene
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId":     projectID,
-			"name":          "Usage Test Scene",
+			"name":          "Usage Test Look",
 			"fixtureValues": []map[string]interface{}{},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
-	// Query scene usage (should be empty initially)
+	// Query look usage (should be empty initially)
 	var usageResp struct {
-		SceneUsage struct {
-			SceneID   string `json:"sceneId"`
-			SceneName string `json:"sceneName"`
-			Cues      []struct {
+		LookUsage struct {
+			LookID   string `json:"lookId"`
+			LookName string `json:"lookName"`
+			Cues     []struct {
 				CueID       string  `json:"cueId"`
 				CueName     string  `json:"cueName"`
 				CueNumber   float64 `json:"cueNumber"`
 				CueListID   string  `json:"cueListId"`
 				CueListName string  `json:"cueListName"`
 			} `json:"cues"`
-		} `json:"sceneUsage"`
+		} `json:"lookUsage"`
 	}
 
 	err = client.Query(ctx, `
-		query GetSceneUsage($sceneId: ID!) {
-			sceneUsage(sceneId: $sceneId) {
-				sceneId
-				sceneName
+		query GetLookUsage($lookId: ID!) {
+			lookUsage(lookId: $lookId) {
+				lookId
+				lookName
 				cues {
 					cueId
 					cueName
@@ -905,17 +905,17 @@ func TestSceneUsage(t *testing.T) {
 				}
 			}
 		}
-	`, map[string]interface{}{"sceneId": sceneID}, &usageResp)
+	`, map[string]interface{}{"lookId": lookID}, &usageResp)
 
 	require.NoError(t, err)
-	assert.Equal(t, sceneID, usageResp.SceneUsage.SceneID)
-	assert.Equal(t, "Usage Test Scene", usageResp.SceneUsage.SceneName)
-	// Initially no cues should reference this scene
-	assert.Empty(t, usageResp.SceneUsage.Cues)
+	assert.Equal(t, lookID, usageResp.LookUsage.LookID)
+	assert.Equal(t, "Usage Test Look", usageResp.LookUsage.LookName)
+	// Initially no cues should reference this look
+	assert.Empty(t, usageResp.LookUsage.Cues)
 }
 
-// TestUpdateScenePartial tests partial scene updates.
-func TestUpdateScenePartial(t *testing.T) {
+// TestUpdateLookPartial tests partial look updates.
+func TestUpdateLookPartial(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -947,16 +947,16 @@ func TestUpdateScenePartial(t *testing.T) {
 	fixture1ID := createTestFixture(t, client, ctx, projectID, "Partial Update Fixture 1", 1)
 	fixture2ID := createTestFixture(t, client, ctx, projectID, "Partial Update Fixture 2", 10)
 
-	// Create scene with fixture1
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look with fixture1
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -971,15 +971,15 @@ func TestUpdateScenePartial(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
 	// Update only the name (partial update)
 	t.Run("UpdateNameOnly", func(t *testing.T) {
 		var updateResp struct {
-			UpdateScenePartial struct {
+			UpdateLookPartial struct {
 				ID            string `json:"id"`
 				Name          string `json:"name"`
 				FixtureValues []struct {
@@ -991,12 +991,12 @@ func TestUpdateScenePartial(t *testing.T) {
 						Value  int `json:"value"`
 					} `json:"channels"`
 				} `json:"fixtureValues"`
-			} `json:"updateScenePartial"`
+			} `json:"updateLookPartial"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation UpdateScenePartial($sceneId: ID!, $name: String) {
-				updateScenePartial(sceneId: $sceneId, name: $name) {
+			mutation UpdateLookPartial($lookId: ID!, $name: String) {
+				updateLookPartial(lookId: $lookId, name: $name) {
 					id
 					name
 					fixtureValues {
@@ -1011,23 +1011,23 @@ func TestUpdateScenePartial(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"sceneId": sceneID,
-			"name":    "Updated Name",
+			"lookId": lookID,
+			"name":   "Updated Name",
 		}, &updateResp)
 
 		require.NoError(t, err)
-		assert.Equal(t, "Updated Name", updateResp.UpdateScenePartial.Name)
+		assert.Equal(t, "Updated Name", updateResp.UpdateLookPartial.Name)
 		// Fixture values should be unchanged
-		assert.Len(t, updateResp.UpdateScenePartial.FixtureValues, 1)
-		assert.Len(t, updateResp.UpdateScenePartial.FixtureValues[0].Channels, 1)
-		assert.Equal(t, 0, updateResp.UpdateScenePartial.FixtureValues[0].Channels[0].Offset)
-		assert.Equal(t, 100, updateResp.UpdateScenePartial.FixtureValues[0].Channels[0].Value)
+		assert.Len(t, updateResp.UpdateLookPartial.FixtureValues, 1)
+		assert.Len(t, updateResp.UpdateLookPartial.FixtureValues[0].Channels, 1)
+		assert.Equal(t, 0, updateResp.UpdateLookPartial.FixtureValues[0].Channels[0].Offset)
+		assert.Equal(t, 100, updateResp.UpdateLookPartial.FixtureValues[0].Channels[0].Value)
 	})
 
 	// Merge fixture values (add fixture2 without removing fixture1)
 	t.Run("MergeFixtureValues", func(t *testing.T) {
 		var updateResp struct {
-			UpdateScenePartial struct {
+			UpdateLookPartial struct {
 				FixtureValues []struct {
 					Fixture struct {
 						ID string `json:"id"`
@@ -1037,12 +1037,12 @@ func TestUpdateScenePartial(t *testing.T) {
 						Value  int `json:"value"`
 					} `json:"channels"`
 				} `json:"fixtureValues"`
-			} `json:"updateScenePartial"`
+			} `json:"updateLookPartial"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation UpdateScenePartial($sceneId: ID!, $fixtureValues: [FixtureValueInput!], $mergeFixtures: Boolean) {
-				updateScenePartial(sceneId: $sceneId, fixtureValues: $fixtureValues, mergeFixtures: $mergeFixtures) {
+			mutation UpdateLookPartial($lookId: ID!, $fixtureValues: [FixtureValueInput!], $mergeFixtures: Boolean) {
+				updateLookPartial(lookId: $lookId, fixtureValues: $fixtureValues, mergeFixtures: $mergeFixtures) {
 					fixtureValues {
 						fixture {
 							id
@@ -1055,7 +1055,7 @@ func TestUpdateScenePartial(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"sceneId": sceneID,
+			"lookId": lookID,
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture2ID,
@@ -1069,6 +1069,6 @@ func TestUpdateScenePartial(t *testing.T) {
 
 		require.NoError(t, err)
 		// Should now have both fixtures
-		assert.Len(t, updateResp.UpdateScenePartial.FixtureValues, 2)
+		assert.Len(t, updateResp.UpdateLookPartial.FixtureValues, 2)
 	})
 }

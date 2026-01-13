@@ -361,8 +361,8 @@ type fadeBehaviorTestSetup struct {
 	projectID    string
 	definitionID string
 	fixtureID    string
-	sceneBoardID string
-	sceneIDs     map[string]string // name -> ID
+	lookBoardID string
+	lookIDs     map[string]string // name -> ID
 }
 
 // newFadeBehaviorTestSetup creates test fixtures with mixed fade behaviors.
@@ -377,7 +377,7 @@ func newFadeBehaviorTestSetup(t *testing.T) *fadeBehaviorTestSetup {
 
 	setup := &fadeBehaviorTestSetup{
 		client:   client,
-		sceneIDs: make(map[string]string),
+		lookIDs: make(map[string]string),
 	}
 
 	// Create project
@@ -448,15 +448,15 @@ func newFadeBehaviorTestSetup(t *testing.T) *fadeBehaviorTestSetup {
 	require.NoError(t, err)
 	setup.fixtureID = instanceResp.CreateFixtureInstance.ID
 
-	// Create scene board
+	// Create look board
 	var boardResp struct {
-		CreateSceneBoard struct {
+		CreateLookBoard struct {
 			ID string `json:"id"`
-		} `json:"createSceneBoard"`
+		} `json:"createLookBoard"`
 	}
 	err = client.Mutate(ctx, `
-		mutation CreateSceneBoard($input: CreateSceneBoardInput!) {
-			createSceneBoard(input: $input) { id }
+		mutation CreateLookBoard($input: CreateLookBoardInput!) {
+			createLookBoard(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -466,7 +466,7 @@ func newFadeBehaviorTestSetup(t *testing.T) *fadeBehaviorTestSetup {
 		},
 	}, &boardResp)
 	require.NoError(t, err)
-	setup.sceneBoardID = boardResp.CreateSceneBoard.ID
+	setup.lookBoardID = boardResp.CreateLookBoard.ID
 
 	return setup
 }
@@ -483,14 +483,14 @@ func (s *fadeBehaviorTestSetup) cleanup(t *testing.T) {
 		map[string]interface{}{"id": s.definitionID}, nil)
 }
 
-func (s *fadeBehaviorTestSetup) createScene(t *testing.T, name string, channelValues []int) string {
+func (s *fadeBehaviorTestSetup) createLook(t *testing.T, name string, channelValues []int) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var resp struct {
-		CreateScene struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	// Convert dense channelValues to sparse channels format
@@ -500,8 +500,8 @@ func (s *fadeBehaviorTestSetup) createScene(t *testing.T, name string, channelVa
 	}
 
 	err := s.client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -516,8 +516,8 @@ func (s *fadeBehaviorTestSetup) createScene(t *testing.T, name string, channelVa
 		},
 	}, &resp)
 	require.NoError(t, err)
-	s.sceneIDs[name] = resp.CreateScene.ID
-	return resp.CreateScene.ID
+	s.lookIDs[name] = resp.CreateLook.ID
+	return resp.CreateLook.ID
 }
 
 // TestFadeBehaviorDMXOutput tests that SNAP channels jump immediately while FADE channels interpolate.
@@ -533,13 +533,13 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Create two scenes with different values
-	// Scene 1: All channels at 0
-	setup.createScene(t, "Scene Off", []int{0, 0, 0, 0, 0, 0})
+	// Create two looks with different values
+	// Look 1: All channels at 0
+	setup.createLook(t, "Look Off", []int{0, 0, 0, 0, 0, 0})
 
-	// Scene 2: All channels at high values
+	// Look 2: All channels at high values
 	// [Dimmer=200, R=150, G=100, B=50, ColorMacro=180, Strobe=255]
-	sceneOnID := setup.createScene(t, "Scene On", []int{200, 150, 100, 50, 180, 255})
+	lookOnID := setup.createLook(t, "Look On", []int{200, 150, 100, 50, 180, 255})
 
 	// Start Art-Net receiver
 	receiver := artnet.NewReceiver(getArtNetPort())
@@ -560,21 +560,21 @@ func TestFadeBehaviorDMXOutput(t *testing.T) {
 	// Clear any previous frames before starting capture
 	receiver.ClearFrames()
 
-	// Activate scene with 1 second fade
+	// Activate look with 1 second fade
 	var activateResp struct {
-		ActivateSceneFromBoard bool `json:"activateSceneFromBoard"`
+		ActivateLookFromBoard bool `json:"activateLookFromBoard"`
 	}
 	err = setup.client.Mutate(ctx, `
-		mutation ActivateScene($boardId: ID!, $sceneId: ID!, $fadeTime: Float) {
-			activateSceneFromBoard(sceneBoardId: $boardId, sceneId: $sceneId, fadeTimeOverride: $fadeTime)
+		mutation ActivateLook($boardId: ID!, $lookId: ID!, $fadeTime: Float) {
+			activateLookFromBoard(lookBoardId: $boardId, lookId: $lookId, fadeTimeOverride: $fadeTime)
 		}
 	`, map[string]interface{}{
-		"boardId":  setup.sceneBoardID,
-		"sceneId":  sceneOnID,
+		"boardId":  setup.lookBoardID,
+		"lookId":   lookOnID,
 		"fadeTime": 1.0,
 	}, &activateResp)
 	require.NoError(t, err)
-	assert.True(t, activateResp.ActivateSceneFromBoard)
+	assert.True(t, activateResp.ActivateLookFromBoard)
 
 	// Wait for fade to complete plus buffer
 	time.Sleep(1500 * time.Millisecond)
@@ -805,20 +805,20 @@ func TestUnfadableChannelTypes(t *testing.T) {
 	fixtureID := createInstResp.CreateFixtureInstance.ID
 	startChannel := createInstResp.CreateFixtureInstance.StartChannel
 
-	// Create scene with all channels set to 255
-	var createSceneResp struct {
-		CreateScene struct {
+	// Create look with all channels set to 255
+	var createLookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
-			"name":      "Unfadable Test Scene",
+			"name":      "Unfadable Test Look",
 			"projectId": projectID,
 			"fixtureValues": []map[string]interface{}{
 				{
@@ -834,19 +834,19 @@ func TestUnfadableChannelTypes(t *testing.T) {
 				},
 			},
 		},
-	}, &createSceneResp)
+	}, &createLookResp)
 	require.NoError(t, err)
-	sceneID := createSceneResp.CreateScene.ID
+	lookID := createLookResp.CreateLook.ID
 
-	// Create a scene board for fade control
-	var sceneBoardResp struct {
-		CreateSceneBoard struct {
+	// Create a look board for fade control
+	var lookBoardResp struct {
+		CreateLookBoard struct {
 			ID string `json:"id"`
-		} `json:"createSceneBoard"`
+		} `json:"createLookBoard"`
 	}
 	err = client.Mutate(ctx, `
-		mutation CreateSceneBoard($input: CreateSceneBoardInput!) {
-			createSceneBoard(input: $input) { id }
+		mutation CreateLookBoard($input: CreateLookBoardInput!) {
+			createLookBoard(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -854,9 +854,9 @@ func TestUnfadableChannelTypes(t *testing.T) {
 			"name":            "Unfadable Test Board",
 			"defaultFadeTime": 1.0,
 		},
-	}, &sceneBoardResp)
+	}, &lookBoardResp)
 	require.NoError(t, err)
-	sceneBoardID := sceneBoardResp.CreateSceneBoard.ID
+	lookBoardID := lookBoardResp.CreateLookBoard.ID
 
 	// Start Art-Net capture
 	receiver := artnet.NewReceiver(getArtNetPort())
@@ -866,7 +866,7 @@ func TestUnfadableChannelTypes(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
-	// Start capturing and activate scene with a 2-second fade
+	// Start capturing and activate look with a 2-second fade
 	captureCtx, captureCancel := context.WithTimeout(ctx, 3*time.Second)
 	defer captureCancel()
 
@@ -879,14 +879,14 @@ func TestUnfadableChannelTypes(t *testing.T) {
 	// Give capture time to start
 	time.Sleep(100 * time.Millisecond)
 
-	// Activate scene with 2-second fade using activateSceneFromBoard
+	// Activate look with 2-second fade using activateLookFromBoard
 	err = client.Mutate(ctx, `
-		mutation ActivateSceneFromBoard($sceneBoardId: ID!, $sceneId: ID!, $fadeTimeOverride: Float) {
-			activateSceneFromBoard(sceneBoardId: $sceneBoardId, sceneId: $sceneId, fadeTimeOverride: $fadeTimeOverride)
+		mutation ActivateLookFromBoard($lookBoardId: ID!, $lookId: ID!, $fadeTimeOverride: Float) {
+			activateLookFromBoard(lookBoardId: $lookBoardId, lookId: $lookId, fadeTimeOverride: $fadeTimeOverride)
 		}
 	`, map[string]interface{}{
-		"sceneBoardId":     sceneBoardID,
-		"sceneId":          sceneID,
+		"lookBoardId":      lookBoardID,
+		"lookId":           lookID,
 		"fadeTimeOverride": 2.0,
 	}, nil)
 	require.NoError(t, err)
@@ -1006,7 +1006,7 @@ func TestUnfadableChannelTypes(t *testing.T) {
 }
 
 // TestStrobeChannelSNAP tests that strobe channels with SNAP behavior
-// change instantly during scene transitions without intermediate values.
+// change instantly during look transitions without intermediate values.
 func TestStrobeChannelSNAP(t *testing.T) {
 	checkArtNetEnabled(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -1109,17 +1109,17 @@ func TestStrobeChannelSNAP(t *testing.T) {
 	fixtureID := createInstResp.CreateFixtureInstance.ID
 	startChannel := createInstResp.CreateFixtureInstance.StartChannel
 
-	// Create two scenes: one with strobe off (0), one with strobe on (200)
-	var sceneOffResp, sceneOnResp struct {
-		CreateScene struct {
+	// Create two looks: one with strobe off (0), one with strobe on (200)
+	var lookOffResp, lookOnResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
-	// Scene with strobe off
+	// Look with strobe off
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -1135,14 +1135,14 @@ func TestStrobeChannelSNAP(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneOffResp)
+	}, &lookOffResp)
 	require.NoError(t, err)
-	sceneOffID := sceneOffResp.CreateScene.ID
+	lookOffID := lookOffResp.CreateLook.ID
 
-	// Scene with strobe on
+	// Look with strobe on
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -1158,19 +1158,19 @@ func TestStrobeChannelSNAP(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneOnResp)
+	}, &lookOnResp)
 	require.NoError(t, err)
-	sceneOnID := sceneOnResp.CreateScene.ID
+	lookOnID := lookOnResp.CreateLook.ID
 
-	// Create a scene board for fade control
-	var sceneBoardResp struct {
-		CreateSceneBoard struct {
+	// Create a look board for fade control
+	var lookBoardResp struct {
+		CreateLookBoard struct {
 			ID string `json:"id"`
-		} `json:"createSceneBoard"`
+		} `json:"createLookBoard"`
 	}
 	err = client.Mutate(ctx, `
-		mutation CreateSceneBoard($input: CreateSceneBoardInput!) {
-			createSceneBoard(input: $input) { id }
+		mutation CreateLookBoard($input: CreateLookBoardInput!) {
+			createLookBoard(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -1178,16 +1178,16 @@ func TestStrobeChannelSNAP(t *testing.T) {
 			"name":            "Strobe Test Board",
 			"defaultFadeTime": 1.0,
 		},
-	}, &sceneBoardResp)
+	}, &lookBoardResp)
 	require.NoError(t, err)
-	sceneBoardID := sceneBoardResp.CreateSceneBoard.ID
+	lookBoardID := lookBoardResp.CreateLookBoard.ID
 
-	// Activate strobe-off scene first (instant)
+	// Activate strobe-off look first (instant)
 	err = client.Mutate(ctx, `
-		mutation SetSceneLive($sceneId: ID!) {
-			setSceneLive(sceneId: $sceneId)
+		mutation SetLookLive($lookId: ID!) {
+			setLookLive(lookId: $lookId)
 		}
-	`, map[string]interface{}{"sceneId": sceneOffID}, nil)
+	`, map[string]interface{}{"lookId": lookOffID}, nil)
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
@@ -1205,14 +1205,14 @@ func TestStrobeChannelSNAP(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	// Activate strobe-on scene with 2-second fade
+	// Activate strobe-on look with 2-second fade
 	err = client.Mutate(ctx, `
-		mutation ActivateSceneFromBoard($sceneBoardId: ID!, $sceneId: ID!, $fadeTimeOverride: Float) {
-			activateSceneFromBoard(sceneBoardId: $sceneBoardId, sceneId: $sceneId, fadeTimeOverride: $fadeTimeOverride)
+		mutation ActivateLookFromBoard($lookBoardId: ID!, $lookId: ID!, $fadeTimeOverride: Float) {
+			activateLookFromBoard(lookBoardId: $lookBoardId, lookId: $lookId, fadeTimeOverride: $fadeTimeOverride)
 		}
 	`, map[string]interface{}{
-		"sceneBoardId":     sceneBoardID,
-		"sceneId":          sceneOnID,
+		"lookBoardId":      lookBoardID,
+		"lookId":           lookOnID,
 		"fadeTimeOverride": 2.0,
 	}, nil)
 	require.NoError(t, err)
@@ -1360,17 +1360,17 @@ func TestColorMacroChannelSNAP(t *testing.T) {
 	fixtureID := createInstResp.CreateFixtureInstance.ID
 	startChannel := createInstResp.CreateFixtureInstance.StartChannel
 
-	// Create scenes: Red preset (25) to Blue preset (125)
+	// Create looks: Red preset (25) to Blue preset (125)
 	// If it fades, it would go through Green (75) - we want to avoid that!
-	var sceneRedResp, sceneBlueResp struct {
-		CreateScene struct {
+	var lookRedResp, lookBlueResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -1386,13 +1386,13 @@ func TestColorMacroChannelSNAP(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneRedResp)
+	}, &lookRedResp)
 	require.NoError(t, err)
-	sceneRedID := sceneRedResp.CreateScene.ID
+	lookRedID := lookRedResp.CreateLook.ID
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -1408,19 +1408,19 @@ func TestColorMacroChannelSNAP(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneBlueResp)
+	}, &lookBlueResp)
 	require.NoError(t, err)
-	sceneBlueID := sceneBlueResp.CreateScene.ID
+	lookBlueID := lookBlueResp.CreateLook.ID
 
-	// Create a scene board for fade control
-	var sceneBoardResp struct {
-		CreateSceneBoard struct {
+	// Create a look board for fade control
+	var lookBoardResp struct {
+		CreateLookBoard struct {
 			ID string `json:"id"`
-		} `json:"createSceneBoard"`
+		} `json:"createLookBoard"`
 	}
 	err = client.Mutate(ctx, `
-		mutation CreateSceneBoard($input: CreateSceneBoardInput!) {
-			createSceneBoard(input: $input) { id }
+		mutation CreateLookBoard($input: CreateLookBoardInput!) {
+			createLookBoard(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -1428,16 +1428,16 @@ func TestColorMacroChannelSNAP(t *testing.T) {
 			"name":            "Color Macro Test Board",
 			"defaultFadeTime": 1.0,
 		},
-	}, &sceneBoardResp)
+	}, &lookBoardResp)
 	require.NoError(t, err)
-	sceneBoardID := sceneBoardResp.CreateSceneBoard.ID
+	lookBoardID := lookBoardResp.CreateLookBoard.ID
 
 	// Activate red preset (instant)
 	err = client.Mutate(ctx, `
-		mutation SetSceneLive($sceneId: ID!) {
-			setSceneLive(sceneId: $sceneId)
+		mutation SetLookLive($lookId: ID!) {
+			setLookLive(lookId: $lookId)
 		}
-	`, map[string]interface{}{"sceneId": sceneRedID}, nil)
+	`, map[string]interface{}{"lookId": lookRedID}, nil)
 	require.NoError(t, err)
 	time.Sleep(200 * time.Millisecond)
 
@@ -1457,12 +1457,12 @@ func TestColorMacroChannelSNAP(t *testing.T) {
 
 	// Fade to blue preset
 	err = client.Mutate(ctx, `
-		mutation ActivateSceneFromBoard($sceneBoardId: ID!, $sceneId: ID!, $fadeTimeOverride: Float) {
-			activateSceneFromBoard(sceneBoardId: $sceneBoardId, sceneId: $sceneId, fadeTimeOverride: $fadeTimeOverride)
+		mutation ActivateLookFromBoard($lookBoardId: ID!, $lookId: ID!, $fadeTimeOverride: Float) {
+			activateLookFromBoard(lookBoardId: $lookBoardId, lookId: $lookId, fadeTimeOverride: $fadeTimeOverride)
 		}
 	`, map[string]interface{}{
-		"sceneBoardId":     sceneBoardID,
-		"sceneId":          sceneBlueID,
+		"lookBoardId":      lookBoardID,
+		"lookId":           lookBlueID,
 		"fadeTimeOverride": 2.0,
 	}, nil)
 	require.NoError(t, err)
