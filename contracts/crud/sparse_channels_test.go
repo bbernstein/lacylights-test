@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestSparseChannelsCRUD tests scene CRUD operations using the sparse channel format.
+// TestSparseChannelsCRUD tests look CRUD operations using the sparse channel format.
 // This test validates the new ChannelValueInput/ChannelValue format where only
 // modified channels are specified instead of requiring all channels.
 func TestSparseChannelsCRUD(t *testing.T) {
@@ -46,10 +46,10 @@ func TestSparseChannelsCRUD(t *testing.T) {
 	fixture1ID := createTestFixture(t, client, ctx, projectID, "Sparse Test Fixture 1", 1)
 	fixture2ID := createTestFixture(t, client, ctx, projectID, "Sparse Test Fixture 2", 10)
 
-	// CREATE - Scene with sparse channel values
-	t.Run("CreateSceneWithSparseChannels", func(t *testing.T) {
+	// CREATE - Look with sparse channel values
+	t.Run("CreateLookWithSparseChannels", func(t *testing.T) {
 		var createResp struct {
-			CreateScene struct {
+			CreateLook struct {
 				ID            string  `json:"id"`
 				Name          string  `json:"name"`
 				Description   *string `json:"description"`
@@ -63,14 +63,14 @@ func TestSparseChannelsCRUD(t *testing.T) {
 						Offset int `json:"offset"`
 						Value  int `json:"value"`
 					} `json:"channels"`
-					SceneOrder *int `json:"sceneOrder"`
+					LookOrder *int `json:"lookOrder"`
 				} `json:"fixtureValues"`
-			} `json:"createScene"`
+			} `json:"createLook"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation CreateScene($input: CreateSceneInput!) {
-				createScene(input: $input) {
+			mutation CreateLook($input: CreateLookInput!) {
+				createLook(input: $input) {
 					id
 					name
 					description
@@ -84,15 +84,15 @@ func TestSparseChannelsCRUD(t *testing.T) {
 							offset
 							value
 						}
-						sceneOrder
+						lookOrder
 					}
 				}
 			}
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"projectId":   projectID,
-				"name":        "Sparse Channel Scene",
-				"description": "Scene using sparse channel format - only channel 0",
+				"name":        "Sparse Channel Look",
+				"description": "Look using sparse channel format - only channel 0",
 				"fixtureValues": []map[string]interface{}{
 					{
 						"fixtureId": fixture1ID,
@@ -111,13 +111,13 @@ func TestSparseChannelsCRUD(t *testing.T) {
 		}, &createResp)
 
 		require.NoError(t, err)
-		assert.NotEmpty(t, createResp.CreateScene.ID)
-		assert.Equal(t, "Sparse Channel Scene", createResp.CreateScene.Name)
-		assert.NotNil(t, createResp.CreateScene.Description)
-		assert.Len(t, createResp.CreateScene.FixtureValues, 2)
+		assert.NotEmpty(t, createResp.CreateLook.ID)
+		assert.Equal(t, "Sparse Channel Look", createResp.CreateLook.Name)
+		assert.NotNil(t, createResp.CreateLook.Description)
+		assert.Len(t, createResp.CreateLook.FixtureValues, 2)
 
 		// Verify sparse channels were stored correctly
-		for _, fv := range createResp.CreateScene.FixtureValues {
+		for _, fv := range createResp.CreateLook.FixtureValues {
 			assert.Len(t, fv.Channels, 1, "Should only have 1 channel specified")
 			assert.Equal(t, 0, fv.Channels[0].Offset)
 			if fv.Fixture.ID == fixture1ID {
@@ -127,12 +127,12 @@ func TestSparseChannelsCRUD(t *testing.T) {
 			}
 		}
 
-		sceneID := createResp.CreateScene.ID
+		lookID := createResp.CreateLook.ID
 
-		// READ - Query scene returns sparse channels
-		t.Run("ReadSceneWithSparseChannels", func(t *testing.T) {
+		// READ - Query look returns sparse channels
+		t.Run("ReadLookWithSparseChannels", func(t *testing.T) {
 			var readResp struct {
-				Scene struct {
+				Look struct {
 					ID            string  `json:"id"`
 					Name          string  `json:"name"`
 					Description   *string `json:"description"`
@@ -143,12 +143,12 @@ func TestSparseChannelsCRUD(t *testing.T) {
 							Value  int `json:"value"`
 						} `json:"channels"`
 					} `json:"fixtureValues"`
-				} `json:"scene"`
+				} `json:"look"`
 			}
 
 			err := client.Query(ctx, `
-				query GetScene($id: ID!) {
-					scene(id: $id) {
+				query GetLook($id: ID!) {
+					look(id: $id) {
 						id
 						name
 						description
@@ -161,24 +161,24 @@ func TestSparseChannelsCRUD(t *testing.T) {
 						}
 					}
 				}
-			`, map[string]interface{}{"id": sceneID}, &readResp)
+			`, map[string]interface{}{"id": lookID}, &readResp)
 
 			require.NoError(t, err)
-			assert.Equal(t, sceneID, readResp.Scene.ID)
-			assert.Equal(t, "Sparse Channel Scene", readResp.Scene.Name)
-			assert.Len(t, readResp.Scene.FixtureValues, 2)
+			assert.Equal(t, lookID, readResp.Look.ID)
+			assert.Equal(t, "Sparse Channel Look", readResp.Look.Name)
+			assert.Len(t, readResp.Look.FixtureValues, 2)
 
 			// Verify sparse channels are returned correctly
-			for _, fv := range readResp.Scene.FixtureValues {
+			for _, fv := range readResp.Look.FixtureValues {
 				assert.Len(t, fv.Channels, 1, "Should only return specified channels")
 				assert.Equal(t, 0, fv.Channels[0].Offset)
 			}
 		})
 
-		// UPDATE - Update scene with sparse channels
-		t.Run("UpdateSceneWithSparseChannels", func(t *testing.T) {
+		// UPDATE - Update look with sparse channels
+		t.Run("UpdateLookWithSparseChannels", func(t *testing.T) {
 			var updateResp struct {
-				UpdateScene struct {
+				UpdateLook struct {
 					ID            string  `json:"id"`
 					Name          string  `json:"name"`
 					Description   *string `json:"description"`
@@ -188,12 +188,12 @@ func TestSparseChannelsCRUD(t *testing.T) {
 							Value  int `json:"value"`
 						} `json:"channels"`
 					} `json:"fixtureValues"`
-				} `json:"updateScene"`
+				} `json:"updateLook"`
 			}
 
 			err := client.Mutate(ctx, `
-				mutation UpdateScene($id: ID!, $input: UpdateSceneInput!) {
-					updateScene(id: $id, input: $input) {
+				mutation UpdateLook($id: ID!, $input: UpdateLookInput!) {
+					updateLook(id: $id, input: $input) {
 						id
 						name
 						description
@@ -206,9 +206,9 @@ func TestSparseChannelsCRUD(t *testing.T) {
 					}
 				}
 			`, map[string]interface{}{
-				"id": sceneID,
+				"id": lookID,
 				"input": map[string]interface{}{
-					"name":        "Updated Sparse Scene",
+					"name":        "Updated Sparse Look",
 					"description": "Updated to use multiple sparse channels",
 					"fixtureValues": []map[string]interface{}{
 						{
@@ -229,11 +229,11 @@ func TestSparseChannelsCRUD(t *testing.T) {
 			}, &updateResp)
 
 			require.NoError(t, err)
-			assert.Equal(t, "Updated Sparse Scene", updateResp.UpdateScene.Name)
+			assert.Equal(t, "Updated Sparse Look", updateResp.UpdateLook.Name)
 
 			// Verify fixture1 now has 2 channels
 			fixture1Found := false
-			for _, fv := range updateResp.UpdateScene.FixtureValues {
+			for _, fv := range updateResp.UpdateLook.FixtureValues {
 				if len(fv.Channels) == 2 {
 					fixture1Found = true
 					assert.Equal(t, 0, fv.Channels[0].Offset)
@@ -246,24 +246,24 @@ func TestSparseChannelsCRUD(t *testing.T) {
 		})
 
 		// DELETE
-		t.Run("DeleteScene", func(t *testing.T) {
+		t.Run("DeleteLook", func(t *testing.T) {
 			var deleteResp struct {
-				DeleteScene bool `json:"deleteScene"`
+				DeleteLook bool `json:"deleteLook"`
 			}
 
 			err := client.Mutate(ctx, `
-				mutation DeleteScene($id: ID!) {
-					deleteScene(id: $id)
+				mutation DeleteLook($id: ID!) {
+					deleteLook(id: $id)
 				}
-			`, map[string]interface{}{"id": sceneID}, &deleteResp)
+			`, map[string]interface{}{"id": lookID}, &deleteResp)
 
 			require.NoError(t, err)
-			assert.True(t, deleteResp.DeleteScene)
+			assert.True(t, deleteResp.DeleteLook)
 		})
 	})
 }
 
-// TestSparseChannelsAddFixtures tests adding fixtures to a scene using sparse channels.
+// TestSparseChannelsAddFixtures tests adding fixtures to a look using sparse channels.
 func TestSparseChannelsAddFixtures(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -297,21 +297,21 @@ func TestSparseChannelsAddFixtures(t *testing.T) {
 	fixture2ID := createTestFixture(t, client, ctx, projectID, "Add Fixture 2", 10)
 	fixture3ID := createTestFixture(t, client, ctx, projectID, "Add Fixture 3", 20)
 
-	// Create scene with one fixture using sparse channels
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look with one fixture using sparse channels
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Sparse Add Fixtures Scene",
+			"name":      "Sparse Add Fixtures Look",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture1ID,
@@ -321,15 +321,15 @@ func TestSparseChannelsAddFixtures(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
 	// ADD FIXTURES with sparse channels
-	t.Run("AddFixturesToSceneWithSparseChannels", func(t *testing.T) {
+	t.Run("AddFixturesToLookWithSparseChannels", func(t *testing.T) {
 		var addResp struct {
-			AddFixturesToScene struct {
+			AddFixturesToLook struct {
 				ID            string `json:"id"`
 				FixtureValues []struct {
 					Fixture struct {
@@ -340,12 +340,12 @@ func TestSparseChannelsAddFixtures(t *testing.T) {
 						Value  int `json:"value"`
 					} `json:"channels"`
 				} `json:"fixtureValues"`
-			} `json:"addFixturesToScene"`
+			} `json:"addFixturesToLook"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation AddFixtures($sceneId: ID!, $fixtureValues: [FixtureValueInput!]!) {
-				addFixturesToScene(sceneId: $sceneId, fixtureValues: $fixtureValues) {
+			mutation AddFixtures($lookId: ID!, $fixtureValues: [FixtureValueInput!]!) {
+				addFixturesToLook(lookId: $lookId, fixtureValues: $fixtureValues) {
 					id
 					fixtureValues {
 						fixture {
@@ -359,7 +359,7 @@ func TestSparseChannelsAddFixtures(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"sceneId": sceneID,
+			"lookId": lookID,
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture2ID,
@@ -378,11 +378,11 @@ func TestSparseChannelsAddFixtures(t *testing.T) {
 		}, &addResp)
 
 		require.NoError(t, err)
-		assert.Len(t, addResp.AddFixturesToScene.FixtureValues, 3)
+		assert.Len(t, addResp.AddFixturesToLook.FixtureValues, 3)
 
 		// Verify sparse channels for each fixture
 		fixtureChannelCounts := make(map[string]int)
-		for _, fv := range addResp.AddFixturesToScene.FixtureValues {
+		for _, fv := range addResp.AddFixturesToLook.FixtureValues {
 			fixtureChannelCounts[fv.Fixture.ID] = len(fv.Channels)
 		}
 
@@ -425,21 +425,21 @@ func TestSparseChannelsPartialUpdate(t *testing.T) {
 	fixture1ID := createTestFixture(t, client, ctx, projectID, "Partial Update Fixture 1", 1)
 	fixture2ID := createTestFixture(t, client, ctx, projectID, "Partial Update Fixture 2", 10)
 
-	// Create scene with multiple sparse channels
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look with multiple sparse channels
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Original Sparse Scene",
+			"name":      "Original Sparse Look",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture1ID,
@@ -450,15 +450,15 @@ func TestSparseChannelsPartialUpdate(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
 	// Partial update: merge new fixture without replacing existing
 	t.Run("MergeFixturesWithSparseChannels", func(t *testing.T) {
 		var updateResp struct {
-			UpdateScenePartial struct {
+			UpdateLookPartial struct {
 				FixtureValues []struct {
 					Fixture struct {
 						ID string `json:"id"`
@@ -468,12 +468,12 @@ func TestSparseChannelsPartialUpdate(t *testing.T) {
 						Value  int `json:"value"`
 					} `json:"channels"`
 				} `json:"fixtureValues"`
-			} `json:"updateScenePartial"`
+			} `json:"updateLookPartial"`
 		}
 
 		err := client.Mutate(ctx, `
-			mutation UpdateScenePartial($sceneId: ID!, $fixtureValues: [FixtureValueInput!], $mergeFixtures: Boolean) {
-				updateScenePartial(sceneId: $sceneId, fixtureValues: $fixtureValues, mergeFixtures: $mergeFixtures) {
+			mutation UpdateLookPartial($lookId: ID!, $fixtureValues: [FixtureValueInput!], $mergeFixtures: Boolean) {
+				updateLookPartial(lookId: $lookId, fixtureValues: $fixtureValues, mergeFixtures: $mergeFixtures) {
 					fixtureValues {
 						fixture {
 							id
@@ -486,7 +486,7 @@ func TestSparseChannelsPartialUpdate(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"sceneId": sceneID,
+			"lookId": lookID,
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture2ID,
@@ -500,12 +500,12 @@ func TestSparseChannelsPartialUpdate(t *testing.T) {
 
 		require.NoError(t, err)
 		// Should now have both fixtures
-		assert.Len(t, updateResp.UpdateScenePartial.FixtureValues, 2)
+		assert.Len(t, updateResp.UpdateLookPartial.FixtureValues, 2)
 
 		// Verify fixture1 still has its original sparse channels
 		fixture1Found := false
 		fixture2Found := false
-		for _, fv := range updateResp.UpdateScenePartial.FixtureValues {
+		for _, fv := range updateResp.UpdateLookPartial.FixtureValues {
 			if fv.Fixture.ID == fixture1ID {
 				fixture1Found = true
 				assert.Len(t, fv.Channels, 2, "Fixture 1 should still have 2 channels")
@@ -520,8 +520,8 @@ func TestSparseChannelsPartialUpdate(t *testing.T) {
 	})
 }
 
-// TestSparseChannelsSceneOrder tests that sceneOrder is preserved with sparse channels.
-func TestSparseChannelsSceneOrder(t *testing.T) {
+// TestSparseChannelsLookOrder tests that lookOrder is preserved with sparse channels.
+func TestSparseChannelsLookOrder(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -539,7 +539,7 @@ func TestSparseChannelsSceneOrder(t *testing.T) {
 			createProject(input: $input) { id }
 		}
 	`, map[string]interface{}{
-		"input": map[string]interface{}{"name": "Sparse Scene Order Test"},
+		"input": map[string]interface{}{"name": "Sparse Look Order Test"},
 	}, &projectResp)
 
 	require.NoError(t, err)
@@ -553,9 +553,9 @@ func TestSparseChannelsSceneOrder(t *testing.T) {
 	fixture1ID := createTestFixture(t, client, ctx, projectID, "Order Fixture 1", 1)
 	fixture2ID := createTestFixture(t, client, ctx, projectID, "Order Fixture 2", 10)
 
-	// Create scene with explicit scene order
+	// Create look with explicit look order
 	var createResp struct {
-		CreateScene struct {
+		CreateLook struct {
 			ID            string `json:"id"`
 			FixtureValues []struct {
 				Fixture struct {
@@ -565,14 +565,14 @@ func TestSparseChannelsSceneOrder(t *testing.T) {
 					Offset int `json:"offset"`
 					Value  int `json:"value"`
 				} `json:"channels"`
-				SceneOrder *int `json:"sceneOrder"`
+				LookOrder *int `json:"lookOrder"`
 			} `json:"fixtureValues"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) {
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) {
 				id
 				fixtureValues {
 					fixture {
@@ -582,28 +582,28 @@ func TestSparseChannelsSceneOrder(t *testing.T) {
 						offset
 						value
 					}
-					sceneOrder
+					lookOrder
 				}
 			}
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Ordered Sparse Scene",
+			"name":      "Ordered Sparse Look",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixture1ID,
 					"channels": []map[string]interface{}{
 						{"offset": 0, "value": 255},
 					},
-					"sceneOrder": 2,
+					"lookOrder": 2,
 				},
 				{
 					"fixtureId": fixture2ID,
 					"channels": []map[string]interface{}{
 						{"offset": 0, "value": 128},
 					},
-					"sceneOrder": 1,
+					"lookOrder": 1,
 				},
 			},
 		},
@@ -611,14 +611,14 @@ func TestSparseChannelsSceneOrder(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// Verify sceneOrder is preserved with sparse channels
-	for _, fv := range createResp.CreateScene.FixtureValues {
-		assert.NotNil(t, fv.SceneOrder, "Scene order should be set")
+	// Verify lookOrder is preserved with sparse channels
+	for _, fv := range createResp.CreateLook.FixtureValues {
+		assert.NotNil(t, fv.LookOrder, "Look order should be set")
 		switch fv.Fixture.ID {
 		case fixture1ID:
-			assert.Equal(t, 2, *fv.SceneOrder)
+			assert.Equal(t, 2, *fv.LookOrder)
 		case fixture2ID:
-			assert.Equal(t, 1, *fv.SceneOrder)
+			assert.Equal(t, 1, *fv.LookOrder)
 		}
 	}
 }

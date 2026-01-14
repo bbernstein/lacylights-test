@@ -180,7 +180,7 @@ func TestProjectCRUD(t *testing.T) {
 	})
 }
 
-// TestProjectWithRelations tests project with fixtures and scenes.
+// TestProjectWithRelations tests project with fixtures and looks.
 func TestProjectWithRelations(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -260,24 +260,24 @@ func TestProjectWithRelations(t *testing.T) {
 
 	require.NoError(t, err)
 
-	// Create scene
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId":     projectID,
-			"name":          "Test Scene",
+			"name":          "Test Look",
 			"fixtureValues": []map[string]interface{}{},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
 
@@ -290,10 +290,10 @@ func TestProjectWithRelations(t *testing.T) {
 				ID   string `json:"id"`
 				Name string `json:"name"`
 			} `json:"fixtures"`
-			Scenes []struct {
+			Looks []struct {
 				ID   string `json:"id"`
 				Name string `json:"name"`
-			} `json:"scenes"`
+			} `json:"looks"`
 		} `json:"project"`
 	}
 
@@ -306,7 +306,7 @@ func TestProjectWithRelations(t *testing.T) {
 					id
 					name
 				}
-				scenes {
+				looks {
 					id
 					name
 				}
@@ -318,6 +318,6 @@ func TestProjectWithRelations(t *testing.T) {
 	assert.Equal(t, "Relations Test Project", queryResp.Project.Name)
 	assert.Len(t, queryResp.Project.Fixtures, 1)
 	assert.Equal(t, "Test Fixture", queryResp.Project.Fixtures[0].Name)
-	assert.Len(t, queryResp.Project.Scenes, 1)
-	assert.Equal(t, "Test Scene", queryResp.Project.Scenes[0].Name)
+	assert.Len(t, queryResp.Project.Looks, 1)
+	assert.Equal(t, "Test Look", queryResp.Project.Looks[0].Name)
 }

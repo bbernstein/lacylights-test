@@ -468,7 +468,7 @@ func TestBulkFixtureOperations(t *testing.T) {
 	})
 }
 
-// TestFixtureInstanceUsage tests querying fixture usage across scenes.
+// TestFixtureInstanceUsage tests querying fixture usage across looks.
 func TestFixtureInstanceUsage(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -523,21 +523,21 @@ func TestFixtureInstanceUsage(t *testing.T) {
 	require.NoError(t, err)
 	fixtureID := fixtureResp.CreateFixtureInstance.ID
 
-	// Create scene with this fixture
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look with this fixture
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Usage Test Scene",
+			"name":      "Usage Test Look",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixtureID,
@@ -547,7 +547,7 @@ func TestFixtureInstanceUsage(t *testing.T) {
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
 
@@ -556,10 +556,10 @@ func TestFixtureInstanceUsage(t *testing.T) {
 		FixtureUsage struct {
 			FixtureID   string `json:"fixtureId"`
 			FixtureName string `json:"fixtureName"`
-			Scenes      []struct {
+			Looks       []struct {
 				ID   string `json:"id"`
 				Name string `json:"name"`
-			} `json:"scenes"`
+			} `json:"looks"`
 		} `json:"fixtureUsage"`
 	}
 
@@ -568,7 +568,7 @@ func TestFixtureInstanceUsage(t *testing.T) {
 			fixtureUsage(fixtureId: $fixtureId) {
 				fixtureId
 				fixtureName
-				scenes {
+				looks {
 					id
 					name
 				}
@@ -578,8 +578,8 @@ func TestFixtureInstanceUsage(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, fixtureID, usageResp.FixtureUsage.FixtureID)
-	assert.Len(t, usageResp.FixtureUsage.Scenes, 1)
-	assert.Equal(t, "Usage Test Scene", usageResp.FixtureUsage.Scenes[0].Name)
+	assert.Len(t, usageResp.FixtureUsage.Looks, 1)
+	assert.Equal(t, "Usage Test Look", usageResp.FixtureUsage.Looks[0].Name)
 }
 
 // TestChannelMap tests the channel map query for a project.

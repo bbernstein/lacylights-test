@@ -20,7 +20,7 @@ func skipQLCTests() bool {
 	return os.Getenv("SKIP_QLC_TESTS") != ""
 }
 
-// setupExportTest creates a project with fixtures, scenes, and cue lists for export testing.
+// setupExportTest creates a project with fixtures, looks, and cue lists for export testing.
 func setupExportTest(t *testing.T, client *graphql.Client, ctx context.Context) string {
 	// Create project
 	var projectResp struct {
@@ -129,21 +129,21 @@ func setupExportTest(t *testing.T, client *graphql.Client, ctx context.Context) 
 	require.NoError(t, err)
 	fixtureID := fixtureResp.CreateFixtureInstance.ID
 
-	// Create scene
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId": projectID,
-			"name":      "Export Test Scene",
+			"name":      "Export Test Look",
 			"fixtureValues": []map[string]interface{}{
 				{
 					"fixtureId": fixtureID,
@@ -151,10 +151,10 @@ func setupExportTest(t *testing.T, client *graphql.Client, ctx context.Context) 
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
 	// Create cue list with cue
 	var cueListResp struct {
@@ -184,7 +184,7 @@ func setupExportTest(t *testing.T, client *graphql.Client, ctx context.Context) 
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"cueListId":   cueListID,
-			"sceneId":     sceneID,
+			"lookId":      lookID,
 			"name":        "Export Test Cue",
 			"cueNumber":   1.0,
 			"fadeInTime":  2.0,
@@ -219,7 +219,7 @@ func TestExportProject(t *testing.T) {
 			Stats       struct {
 				FixtureDefinitionsCount int `json:"fixtureDefinitionsCount"`
 				FixtureInstancesCount   int `json:"fixtureInstancesCount"`
-				ScenesCount             int `json:"scenesCount"`
+				LooksCount              int `json:"looksCount"`
 				CueListsCount           int `json:"cueListsCount"`
 				CuesCount               int `json:"cuesCount"`
 			} `json:"stats"`
@@ -235,7 +235,7 @@ func TestExportProject(t *testing.T) {
 				stats {
 					fixtureDefinitionsCount
 					fixtureInstancesCount
-					scenesCount
+					looksCount
 					cueListsCount
 					cuesCount
 				}
@@ -245,7 +245,7 @@ func TestExportProject(t *testing.T) {
 		"projectId": projectID,
 		"options": map[string]interface{}{
 			"includeFixtures": true,
-			"includeScenes":   true,
+			"includeLooks":    true,
 			"includeCueLists": true,
 		},
 	}, &exportResp)
@@ -257,7 +257,7 @@ func TestExportProject(t *testing.T) {
 
 	// Verify stats
 	assert.GreaterOrEqual(t, exportResp.ExportProject.Stats.FixtureInstancesCount, 1)
-	assert.GreaterOrEqual(t, exportResp.ExportProject.Stats.ScenesCount, 1)
+	assert.GreaterOrEqual(t, exportResp.ExportProject.Stats.LooksCount, 1)
 	assert.GreaterOrEqual(t, exportResp.ExportProject.Stats.CueListsCount, 1)
 	assert.GreaterOrEqual(t, exportResp.ExportProject.Stats.CuesCount, 1)
 
@@ -276,7 +276,7 @@ func TestExportProject(t *testing.T) {
 				Stats     struct {
 					FixtureDefinitionsCreated int `json:"fixtureDefinitionsCreated"`
 					FixtureInstancesCreated   int `json:"fixtureInstancesCreated"`
-					ScenesCreated             int `json:"scenesCreated"`
+					LooksCreated              int `json:"looksCreated"`
 					CueListsCreated           int `json:"cueListsCreated"`
 					CuesCreated               int `json:"cuesCreated"`
 				} `json:"stats"`
@@ -291,7 +291,7 @@ func TestExportProject(t *testing.T) {
 					stats {
 						fixtureDefinitionsCreated
 						fixtureInstancesCreated
-						scenesCreated
+						looksCreated
 						cueListsCreated
 						cuesCreated
 					}
@@ -316,7 +316,7 @@ func TestExportProject(t *testing.T) {
 
 		// Verify import stats match export
 		assert.GreaterOrEqual(t, importResp.ImportProject.Stats.FixtureInstancesCreated, 1)
-		assert.GreaterOrEqual(t, importResp.ImportProject.Stats.ScenesCreated, 1)
+		assert.GreaterOrEqual(t, importResp.ImportProject.Stats.LooksCreated, 1)
 		assert.GreaterOrEqual(t, importResp.ImportProject.Stats.CueListsCreated, 1)
 		assert.GreaterOrEqual(t, importResp.ImportProject.Stats.CuesCreated, 1)
 
@@ -326,7 +326,7 @@ func TestExportProject(t *testing.T) {
 				ID           string `json:"id"`
 				Name         string `json:"name"`
 				FixtureCount int    `json:"fixtureCount"`
-				SceneCount   int    `json:"sceneCount"`
+				LookCount    int    `json:"lookCount"`
 				CueListCount int    `json:"cueListCount"`
 			} `json:"project"`
 		}
@@ -337,7 +337,7 @@ func TestExportProject(t *testing.T) {
 					id
 					name
 					fixtureCount
-					sceneCount
+					lookCount
 					cueListCount
 				}
 			}
@@ -346,7 +346,7 @@ func TestExportProject(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "Imported Test Project", verifyResp.Project.Name)
 		assert.GreaterOrEqual(t, verifyResp.Project.FixtureCount, 1)
-		assert.GreaterOrEqual(t, verifyResp.Project.SceneCount, 1)
+		assert.GreaterOrEqual(t, verifyResp.Project.LookCount, 1)
 		assert.GreaterOrEqual(t, verifyResp.Project.CueListCount, 1)
 	})
 }
@@ -388,7 +388,7 @@ func TestExportWithOptions(t *testing.T) {
 			"projectId": projectID,
 			"options": map[string]interface{}{
 				"includeFixtures": true,
-				"includeScenes":   true,
+				"includeLooks":    true,
 				"includeCueLists": false,
 			},
 		}, &exportResp)
@@ -568,7 +568,7 @@ func TestQLCExportImport(t *testing.T) {
 				ProjectName  string `json:"projectName"`
 				XMLContent   string `json:"xmlContent"`
 				FixtureCount int    `json:"fixtureCount"`
-				SceneCount   int    `json:"sceneCount"`
+				LookCount    int    `json:"lookCount"`
 				CueListCount int    `json:"cueListCount"`
 			} `json:"exportProjectToQLC"`
 		}
@@ -579,7 +579,7 @@ func TestQLCExportImport(t *testing.T) {
 					projectName
 					xmlContent
 					fixtureCount
-					sceneCount
+					lookCount
 					cueListCount
 				}
 			}
@@ -644,7 +644,7 @@ func TestQLCImport(t *testing.T) {
 		ImportProjectFromQLC struct {
 			OriginalFileName string   `json:"originalFileName"`
 			FixtureCount     int      `json:"fixtureCount"`
-			SceneCount       int      `json:"sceneCount"`
+			LookCount        int      `json:"lookCount"`
 			CueListCount     int      `json:"cueListCount"`
 			Warnings         []string `json:"warnings"`
 			Project          struct {
@@ -659,7 +659,7 @@ func TestQLCImport(t *testing.T) {
 			importProjectFromQLC(xmlContent: $xmlContent, originalFileName: $originalFileName) {
 				originalFileName
 				fixtureCount
-				sceneCount
+				lookCount
 				cueListCount
 				warnings
 				project {

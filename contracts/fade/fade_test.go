@@ -102,8 +102,8 @@ type testSetup struct {
 	projectID    string
 	definitionID string
 	fixtureID    string
-	sceneBoardID string
-	scenes       map[string]string // name -> ID
+	lookBoardID string
+	looks       map[string]string // name -> ID
 }
 
 // newTestSetup creates a new test setup with project and fixture
@@ -122,7 +122,7 @@ func newTestSetup(t *testing.T) *testSetup {
 
 	setup := &testSetup{
 		client: client,
-		scenes: make(map[string]string),
+		looks: make(map[string]string),
 	}
 
 	// Create project
@@ -195,26 +195,26 @@ func newTestSetup(t *testing.T) *testSetup {
 	require.NoError(t, err)
 	setup.fixtureID = fixtureResp.CreateFixtureInstance.ID
 
-	// Create a scene board for fade-controlled activation
+	// Create a look board for fade-controlled activation
 	var boardResp struct {
-		CreateSceneBoard struct {
+		CreateLookBoard struct {
 			ID string `json:"id"`
-		} `json:"createSceneBoard"`
+		} `json:"createLookBoard"`
 	}
 
 	err = client.Mutate(ctx, `
-		mutation CreateSceneBoard($input: CreateSceneBoardInput!) {
-			createSceneBoard(input: $input) { id }
+		mutation CreateLookBoard($input: CreateLookBoardInput!) {
+			createLookBoard(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
 			"projectId":       setup.projectID,
-			"name":            "Test Scene Board",
+			"name":            "Test Look Board",
 			"defaultFadeTime": 2.0,
 		},
 	}, &boardResp)
 	require.NoError(t, err)
-	setup.sceneBoardID = boardResp.CreateSceneBoard.ID
+	setup.lookBoardID = boardResp.CreateLookBoard.ID
 
 	return setup
 }
@@ -244,15 +244,15 @@ func (s *testSetup) cleanup(t *testing.T) {
 	}
 }
 
-// createScene creates a scene with the given name and channel values
-func (s *testSetup) createScene(t *testing.T, name string, channelValues []int) string {
+// createLook creates a look with the given name and channel values
+func (s *testSetup) createLook(t *testing.T, name string, channelValues []int) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	var sceneResp struct {
-		CreateScene struct {
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 
 	// Convert dense channelValues to sparse channels format
@@ -261,10 +261,10 @@ func (s *testSetup) createScene(t *testing.T, name string, channelValues []int) 
 		channels[i] = map[string]int{"offset": i, "value": value}
 	}
 
-	// Create scene with fixture values included
+	// Create look with fixture values included
 	err := s.client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -277,28 +277,28 @@ func (s *testSetup) createScene(t *testing.T, name string, channelValues []int) 
 				},
 			},
 		},
-	}, &sceneResp)
+	}, &lookResp)
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
-	// Add scene to scene board for fade-controlled activation
-	buttonIndex := len(s.scenes) // Use scene count as button position
+	// Add look to look board for fade-controlled activation
+	buttonIndex := len(s.looks) // Use look count as button position
 	err = s.client.Mutate(ctx, `
-		mutation AddSceneToBoard($input: CreateSceneBoardButtonInput!) {
-			addSceneToBoard(input: $input) { id }
+		mutation AddLookToBoard($input: CreateLookBoardButtonInput!) {
+			addLookToBoard(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
-			"sceneBoardId": s.sceneBoardID,
-			"sceneId":      sceneID,
+			"lookBoardId": s.lookBoardID,
+			"lookId":      lookID,
 			"layoutX":      buttonIndex * 200, // Space buttons apart
 			"layoutY":      0,
 		},
 	}, nil)
 	require.NoError(t, err)
 
-	s.scenes[name] = sceneID
-	return sceneID
+	s.looks[name] = lookID
+	return lookID
 }
 
 // getDMXOutput gets current DMX output for universe 1
@@ -316,31 +316,31 @@ func (s *testSetup) getDMXOutput(t *testing.T) []int {
 	return resp.DMXOutput
 }
 
-// activateScene activates a scene with optional fade time
-// Uses activateSceneFromBoard for fade control, or setSceneLive for instant (0 fade)
-func (s *testSetup) activateScene(t *testing.T, sceneID string, fadeTime float64) {
+// activateLook activates a look with optional fade time
+// Uses activateLookFromBoard for fade control, or setLookLive for instant (0 fade)
+func (s *testSetup) activateLook(t *testing.T, lookID string, fadeTime float64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if fadeTime == 0 {
-		// Use setSceneLive for instant activation
+		// Use setLookLive for instant activation
 		err := s.client.Mutate(ctx, `
-			mutation SetSceneLive($sceneId: ID!) {
-				setSceneLive(sceneId: $sceneId)
+			mutation SetLookLive($lookId: ID!) {
+				setLookLive(lookId: $lookId)
 			}
 		`, map[string]interface{}{
-			"sceneId": sceneID,
+			"lookId": lookID,
 		}, nil)
 		require.NoError(t, err)
 	} else {
-		// Use activateSceneFromBoard for fade-controlled activation
+		// Use activateLookFromBoard for fade-controlled activation
 		err := s.client.Mutate(ctx, `
-			mutation ActivateSceneFromBoard($sceneBoardId: ID!, $sceneId: ID!, $fadeTimeOverride: Float) {
-				activateSceneFromBoard(sceneBoardId: $sceneBoardId, sceneId: $sceneId, fadeTimeOverride: $fadeTimeOverride)
+			mutation ActivateLookFromBoard($lookBoardId: ID!, $lookId: ID!, $fadeTimeOverride: Float) {
+				activateLookFromBoard(lookBoardId: $lookBoardId, lookId: $lookId, fadeTimeOverride: $fadeTimeOverride)
 			}
 		`, map[string]interface{}{
-			"sceneBoardId":     s.sceneBoardID,
-			"sceneId":          sceneID,
+			"lookBoardId":     s.lookBoardID,
+			"lookId":          lookID,
 			"fadeTimeOverride": fadeTime,
 		}, nil)
 		require.NoError(t, err)
@@ -364,19 +364,19 @@ func (s *testSetup) fadeToBlack(t *testing.T, fadeTime float64) {
 // Basic Fade Tests
 // ============================================================================
 
-func TestActivateSceneWithFade(t *testing.T) {
+func TestActivateLookWithFade(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene at full brightness (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	// Create look at full brightness (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
 
 	// Ensure clean state
 	setup.fadeToBlack(t, 0)
 	time.Sleep(100 * time.Millisecond)
 
-	// Activate scene with a 2-second fade
-	setup.activateScene(t, sceneID, 2.0)
+	// Activate look with a 2-second fade
+	setup.activateLook(t, lookID, 2.0)
 
 	// Query DMX output during fade
 	time.Sleep(100 * time.Millisecond)
@@ -398,9 +398,9 @@ func TestFadeToBlack(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create and activate scene immediately (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
-	setup.activateScene(t, sceneID, 0)
+	// Create and activate look immediately (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
+	setup.activateLook(t, lookID, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify at full
@@ -431,15 +431,15 @@ func TestInstantFade(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 128, 64})
+	// Create look (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 128, 64})
 
 	// Ensure blackout
 	setup.fadeToBlack(t, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Activate with 0 fade time (instant)
-	setup.activateScene(t, sceneID, 0)
+	setup.activateLook(t, lookID, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Should be immediately at target values
@@ -454,46 +454,46 @@ func TestInstantFade(t *testing.T) {
 // Fade Interruption Tests
 // ============================================================================
 
-func TestFadeInterruptionWithNewScene(t *testing.T) {
+func TestFadeInterruptionWithNewLook(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create two scenes (Dimmer, Red, Green, Blue)
-	scene1ID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
-	scene2ID := setup.createScene(t, "Half", []int{128, 128, 128, 128})
+	// Create two looks (Dimmer, Red, Green, Blue)
+	look1ID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
+	look2ID := setup.createLook(t, "Half", []int{128, 128, 128, 128})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
 	time.Sleep(100 * time.Millisecond)
 
-	// Start a long fade to scene 1
-	setup.activateScene(t, scene1ID, 5.0)
+	// Start a long fade to look 1
+	setup.activateLook(t, look1ID, 5.0)
 
-	// Wait a bit, then interrupt with scene 2
+	// Wait a bit, then interrupt with look 2
 	time.Sleep(500 * time.Millisecond)
-	setup.activateScene(t, scene2ID, 1.0)
+	setup.activateLook(t, look2ID, 1.0)
 
 	// Wait for second fade to complete
 	time.Sleep(1500 * time.Millisecond)
 
-	// Should be at scene 2's value
+	// Should be at look 2's value
 	output := setup.getDMXOutput(t)
-	assert.InDelta(t, 128, output[0], 5, "Should be at scene 2's value after interruption")
+	assert.InDelta(t, 128, output[0], 5, "Should be at look 2's value after interruption")
 }
 
 func TestFadeInterruptionWithFadeToBlack(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene at full (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	// Create look at full (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Start fade to full over 5 seconds
-	setup.activateScene(t, sceneID, 5.0)
+	setup.activateLook(t, lookID, 5.0)
 
 	// Wait until mid-fade
 	time.Sleep(2500 * time.Millisecond)
@@ -515,26 +515,26 @@ func TestMultipleRapidInterruptions(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create several scenes (Dimmer, Red, Green, Blue)
-	scene1ID := setup.createScene(t, "Red", []int{255, 255, 0, 0})
-	scene2ID := setup.createScene(t, "Green", []int{255, 0, 255, 0})
-	scene3ID := setup.createScene(t, "Blue", []int{255, 0, 0, 255})
+	// Create several looks (Dimmer, Red, Green, Blue)
+	look1ID := setup.createLook(t, "Red", []int{255, 255, 0, 0})
+	look2ID := setup.createLook(t, "Green", []int{255, 0, 255, 0})
+	look3ID := setup.createLook(t, "Blue", []int{255, 0, 0, 255})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Rapidly interrupt fades
-	setup.activateScene(t, scene1ID, 2.0)
+	setup.activateLook(t, look1ID, 2.0)
 	time.Sleep(100 * time.Millisecond)
-	setup.activateScene(t, scene2ID, 2.0)
+	setup.activateLook(t, look2ID, 2.0)
 	time.Sleep(100 * time.Millisecond)
-	setup.activateScene(t, scene3ID, 1.0)
+	setup.activateLook(t, look3ID, 1.0)
 
 	// Wait for final fade to complete
 	time.Sleep(1500 * time.Millisecond)
 
-	// Should be at scene 3 (blue) - Dimmer=255, Red=0, Green=0, Blue=255
+	// Should be at look 3 (blue) - Dimmer=255, Red=0, Green=0, Blue=255
 	output := setup.getDMXOutput(t)
 	assert.InDelta(t, 255, output[0], 10, "Dimmer should be 255")
 	assert.InDelta(t, 0, output[1], 10, "Red should be 0")
@@ -550,8 +550,8 @@ func TestFadeProgressionLinear(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene at full (Dimmer=255, Red=255, Green=0, Blue=0)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 0, 0})
+	// Create look at full (Dimmer=255, Red=255, Green=0, Blue=0)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 0, 0})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
@@ -560,7 +560,7 @@ func TestFadeProgressionLinear(t *testing.T) {
 	// Start 2-second fade and track start time
 	fadeTime := 2.0
 	fadeStart := time.Now()
-	setup.activateScene(t, sceneID, fadeTime)
+	setup.activateLook(t, lookID, fadeTime)
 
 	// Helper function to calculate sine easing: -(cos(π*t) - 1) / 2
 	sineEasing := func(progress float64) float64 {
@@ -619,9 +619,9 @@ func TestFadeCompletesToExactValue(t *testing.T) {
 		setup.fadeToBlack(t, 0)
 		time.Sleep(100 * time.Millisecond)
 
-		// Create scene with target values
-		sceneID := setup.createScene(t, "Test", values)
-		setup.activateScene(t, sceneID, 1.0)
+		// Create look with target values
+		lookID := setup.createLook(t, "Test", values)
+		setup.activateLook(t, lookID, 1.0)
 
 		// Wait for fade to complete
 		time.Sleep(1500 * time.Millisecond)
@@ -635,19 +635,19 @@ func TestFadeCompletesToExactValue(t *testing.T) {
 }
 
 // ============================================================================
-// Cross-Fade Tests (scene to scene)
+// Cross-Fade Tests (look to look)
 // ============================================================================
 
-func TestCrossFadeBetweenScenes(t *testing.T) {
+func TestCrossFadeBetweenLooks(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create two different color scenes (Dimmer, Red, Green, Blue)
-	scene1ID := setup.createScene(t, "Red", []int{255, 255, 0, 0})
-	scene2ID := setup.createScene(t, "Blue", []int{255, 0, 0, 255})
+	// Create two different color looks (Dimmer, Red, Green, Blue)
+	look1ID := setup.createLook(t, "Red", []int{255, 255, 0, 0})
+	look2ID := setup.createLook(t, "Blue", []int{255, 0, 0, 255})
 
-	// Start at scene 1 (instant)
-	setup.activateScene(t, scene1ID, 0)
+	// Start at look 1 (instant)
+	setup.activateLook(t, look1ID, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify red (Dimmer=255, Red=255, Green=0, Blue=0)
@@ -655,8 +655,8 @@ func TestCrossFadeBetweenScenes(t *testing.T) {
 	assert.Equal(t, 255, output[1], "Should start at red (output[1]=Red)")
 	assert.Equal(t, 0, output[3], "Should start with no blue (output[3]=Blue)")
 
-	// Cross-fade to scene 2
-	setup.activateScene(t, scene2ID, 2.0)
+	// Cross-fade to look 2
+	setup.activateLook(t, look2ID, 2.0)
 
 	// Check midpoint - should have both colors
 	time.Sleep(1000 * time.Millisecond)
@@ -687,10 +687,10 @@ func TestCueListFadeTransitions(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scenes (Dimmer, Red, Green, Blue)
-	scene1ID := setup.createScene(t, "Scene 1", []int{255, 255, 0, 0})
-	scene2ID := setup.createScene(t, "Scene 2", []int{255, 0, 255, 0})
-	scene3ID := setup.createScene(t, "Scene 3", []int{255, 0, 0, 255})
+	// Create looks (Dimmer, Red, Green, Blue)
+	look1ID := setup.createLook(t, "Look 1", []int{255, 255, 0, 0})
+	look2ID := setup.createLook(t, "Look 2", []int{255, 0, 255, 0})
+	look3ID := setup.createLook(t, "Look 3", []int{255, 0, 0, 255})
 
 	// Create cue list
 	var cueListResp struct {
@@ -714,7 +714,7 @@ func TestCueListFadeTransitions(t *testing.T) {
 
 	// Add cues with specific fade times
 	// Go server uses CreateCueInput and createCue mutation
-	for i, sceneID := range []string{scene1ID, scene2ID, scene3ID} {
+	for i, lookID := range []string{look1ID, look2ID, look3ID} {
 		err := setup.client.Mutate(ctx, `
 			mutation CreateCue($input: CreateCueInput!) {
 				createCue(input: $input) { id }
@@ -724,7 +724,7 @@ func TestCueListFadeTransitions(t *testing.T) {
 				"cueListId":   cueListID,
 				"name":        "Cue " + string(rune('1'+i)),
 				"cueNumber":   float64(i + 1),
-				"sceneId":     sceneID,
+				"lookId":     lookID,
 				"fadeInTime":  1.0,
 				"fadeOutTime": 1.0,
 			},
@@ -744,7 +744,7 @@ func TestCueListFadeTransitions(t *testing.T) {
 	// Wait for first cue fade
 	time.Sleep(1500 * time.Millisecond)
 	output := setup.getDMXOutput(t)
-	assert.InDelta(t, 255, output[1], 5, "Should be at scene 1 (red) - output[1]=Red")
+	assert.InDelta(t, 255, output[1], 5, "Should be at look 1 (red) - output[1]=Red")
 
 	// Go to next cue
 	// Go server requires cueListId parameter and returns Boolean!
@@ -758,7 +758,7 @@ func TestCueListFadeTransitions(t *testing.T) {
 	// Wait for transition
 	time.Sleep(1500 * time.Millisecond)
 	output = setup.getDMXOutput(t)
-	assert.InDelta(t, 255, output[2], 5, "Should be at scene 2 (green) - output[2]=Green")
+	assert.InDelta(t, 255, output[2], 5, "Should be at look 2 (green) - output[2]=Green")
 
 	// Stop cue list
 	// Go server requires cueListId parameter and returns Boolean!
@@ -777,8 +777,8 @@ func TestCueFadeTimeOverride(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	// Create look (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
 
 	// Create cue list with long default fade
 	var cueListResp struct {
@@ -811,7 +811,7 @@ func TestCueFadeTimeOverride(t *testing.T) {
 			"cueListId":   cueListID,
 			"name":        "Slow Cue",
 			"cueNumber":   1.0,
-			"sceneId":     sceneID,
+			"lookId":     lookID,
 			"fadeInTime":  5.0,
 			"fadeOutTime": 1.0,
 		},
@@ -867,12 +867,12 @@ func TestPreviewOverridesLiveAndRestoresOnCancel(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create two scenes (Dimmer, Red, Green, Blue)
-	liveSceneID := setup.createScene(t, "Live", []int{255, 255, 0, 0})
-	previewSceneID := setup.createScene(t, "Preview", []int{255, 0, 255, 0})
+	// Create two looks (Dimmer, Red, Green, Blue)
+	liveLookID := setup.createLook(t, "Live", []int{255, 255, 0, 0})
+	previewLookID := setup.createLook(t, "Preview", []int{255, 0, 255, 0})
 
-	// Set live scene
-	setup.activateScene(t, liveSceneID, 0)
+	// Set live look
+	setup.activateLook(t, liveLookID, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify live output (Dimmer=255, Red=255, Green=0, Blue=0)
@@ -896,15 +896,15 @@ func TestPreviewOverridesLiveAndRestoresOnCancel(t *testing.T) {
 	require.NoError(t, err)
 	sessionID := sessionResp.StartPreviewSession.ID
 
-	// Preview a different scene
-	// Go server uses initializePreviewWithScene instead of previewScene
+	// Preview a different look
+	// Go server uses initializePreviewWithLook instead of previewLook
 	err = setup.client.Mutate(ctx, `
-		mutation InitializePreview($sessionId: ID!, $sceneId: ID!) {
-			initializePreviewWithScene(sessionId: $sessionId, sceneId: $sceneId)
+		mutation InitializePreview($sessionId: ID!, $lookId: ID!) {
+			initializePreviewWithLook(sessionId: $sessionId, lookId: $lookId)
 		}
 	`, map[string]interface{}{
 		"sessionId": sessionID,
-		"sceneId":   previewSceneID,
+		"lookId":   previewLookID,
 	}, nil)
 	require.NoError(t, err)
 
@@ -945,8 +945,8 @@ func TestPreviewSessionOutputValues(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Test", []int{255, 128, 64, 32})
+	// Create look (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Test", []int{255, 128, 64, 32})
 
 	// Start preview session
 	var sessionResp struct {
@@ -963,15 +963,15 @@ func TestPreviewSessionOutputValues(t *testing.T) {
 	require.NoError(t, err)
 	sessionID := sessionResp.StartPreviewSession.ID
 
-	// Preview the scene
-	// Go server uses initializePreviewWithScene instead of previewScene
+	// Preview the look
+	// Go server uses initializePreviewWithLook instead of previewLook
 	err = setup.client.Mutate(ctx, `
-		mutation InitializePreview($sessionId: ID!, $sceneId: ID!) {
-			initializePreviewWithScene(sessionId: $sessionId, sceneId: $sceneId)
+		mutation InitializePreview($sessionId: ID!, $lookId: ID!) {
+			initializePreviewWithLook(sessionId: $sessionId, lookId: $lookId)
 		}
 	`, map[string]interface{}{
 		"sessionId": sessionID,
-		"sceneId":   sceneID,
+		"lookId":   lookID,
 	}, nil)
 	require.NoError(t, err)
 
@@ -1009,7 +1009,7 @@ func TestPreviewSessionOutputValues(t *testing.T) {
 	}
 	require.NotEmpty(t, universe1Channels, "Should have universe 1 output")
 
-	// Verify preview output matches scene values (Dimmer=255, Red=128, Green=64, Blue=32)
+	// Verify preview output matches look values (Dimmer=255, Red=128, Green=64, Blue=32)
 	assert.Equal(t, 255, universe1Channels[0], "Preview dimmer should be 255")
 	assert.Equal(t, 128, universe1Channels[1], "Preview red should be 128")
 	assert.Equal(t, 64, universe1Channels[2], "Preview green should be 64")
@@ -1040,16 +1040,16 @@ func TestFadeCapturedViaArtNet(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	// Create look (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
 
 	// Blackout and clear frames
 	setup.fadeToBlack(t, 0)
 	time.Sleep(100 * time.Millisecond)
 	receiver.ClearFrames()
 
-	// Activate scene with fade
-	setup.activateScene(t, sceneID, 1.0)
+	// Activate look with fade
+	setup.activateLook(t, lookID, 1.0)
 
 	// Wait for fade to complete
 	time.Sleep(1500 * time.Millisecond)
@@ -1094,8 +1094,8 @@ func TestArtNetFrameRate(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	// Create look (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
 
 	// Blackout
 	setup.fadeToBlack(t, 0)
@@ -1104,7 +1104,7 @@ func TestArtNetFrameRate(t *testing.T) {
 
 	// Activate with 2-second fade
 	startTime := time.Now()
-	setup.activateScene(t, sceneID, 2.0)
+	setup.activateLook(t, lookID, 2.0)
 
 	// Wait for fade to complete
 	time.Sleep(2500 * time.Millisecond)
@@ -1131,18 +1131,18 @@ func TestFadeWithZeroChannelChange(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene at specific value (Dimmer, Red, Green, Blue)
-	scene1ID := setup.createScene(t, "Initial", []int{128, 128, 128, 128})
+	// Create look at specific value (Dimmer, Red, Green, Blue)
+	look1ID := setup.createLook(t, "Initial", []int{128, 128, 128, 128})
 
-	// Activate scene instantly
-	setup.activateScene(t, scene1ID, 0)
+	// Activate look instantly
+	setup.activateLook(t, look1ID, 0)
 	time.Sleep(100 * time.Millisecond)
 
-	// Duplicate the scene (same values)
-	scene2ID := setup.createScene(t, "Same", []int{128, 128, 128, 128})
+	// Duplicate the look (same values)
+	look2ID := setup.createLook(t, "Same", []int{128, 128, 128, 128})
 
 	// Fade to same values (should still work, just no change)
-	setup.activateScene(t, scene2ID, 1.0)
+	setup.activateLook(t, look2ID, 1.0)
 	time.Sleep(1500 * time.Millisecond)
 
 	// Should still be at 128
@@ -1154,15 +1154,15 @@ func TestVeryShortFade(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	// Create look (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Very short fade (0.1 seconds)
-	setup.activateScene(t, sceneID, 0.1)
+	setup.activateLook(t, lookID, 0.1)
 	time.Sleep(300 * time.Millisecond)
 
 	// Should be at full
@@ -1175,8 +1175,8 @@ func TestVeryLongFade(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	// Create look (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
 
 	// Start from black
 	setup.fadeToBlack(t, 0)
@@ -1185,7 +1185,7 @@ func TestVeryLongFade(t *testing.T) {
 	// Start a 30-second fade and track start time
 	fadeTime := 30.0
 	fadeStart := time.Now()
-	setup.activateScene(t, sceneID, fadeTime)
+	setup.activateLook(t, lookID, fadeTime)
 
 	// Wait 1 second
 	time.Sleep(1000 * time.Millisecond)
@@ -1220,12 +1220,12 @@ func TestFadeFromPartialValue(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scenes (Dimmer, Red, Green, Blue)
-	halfSceneID := setup.createScene(t, "Half", []int{128, 128, 128, 128})
-	fullSceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	// Create looks (Dimmer, Red, Green, Blue)
+	halfLookID := setup.createLook(t, "Half", []int{128, 128, 128, 128})
+	fullLookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
 
 	// Start at half
-	setup.activateScene(t, halfSceneID, 0)
+	setup.activateLook(t, halfLookID, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify starting point
@@ -1233,7 +1233,7 @@ func TestFadeFromPartialValue(t *testing.T) {
 	assert.Equal(t, 128, output[0], "Should start at half")
 
 	// Fade to full
-	setup.activateScene(t, fullSceneID, 2.0)
+	setup.activateLook(t, fullLookID, 2.0)
 
 	// Check midpoint - should be around 192 (128 + (255-128)/2)
 	time.Sleep(1000 * time.Millisecond)
@@ -1252,12 +1252,12 @@ func TestFadeDownward(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scenes (Dimmer, Red, Green, Blue)
-	fullSceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
-	quarterSceneID := setup.createScene(t, "Quarter", []int{64, 64, 64, 64})
+	// Create looks (Dimmer, Red, Green, Blue)
+	fullLookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
+	quarterLookID := setup.createLook(t, "Quarter", []int{64, 64, 64, 64})
 
 	// Start at full
-	setup.activateScene(t, fullSceneID, 0)
+	setup.activateLook(t, fullLookID, 0)
 	time.Sleep(100 * time.Millisecond)
 
 	// Verify starting point
@@ -1265,7 +1265,7 @@ func TestFadeDownward(t *testing.T) {
 	assert.Equal(t, 255, output[0], "Should start at full")
 
 	// Fade down to quarter
-	setup.activateScene(t, quarterSceneID, 2.0)
+	setup.activateLook(t, quarterLookID, 2.0)
 
 	// Check midpoint - should be around 160 (255 - (255-64)/2)
 	time.Sleep(1000 * time.Millisecond)
@@ -1294,8 +1294,8 @@ func TestEasingTypes(t *testing.T) {
 	setup := newTestSetup(t)
 	defer setup.cleanup(t)
 
-	// Create scene and cue list (Dimmer, Red, Green, Blue)
-	sceneID := setup.createScene(t, "Full", []int{255, 255, 255, 255})
+	// Create look and cue list (Dimmer, Red, Green, Blue)
+	lookID := setup.createLook(t, "Full", []int{255, 255, 255, 255})
 
 	var cueListResp struct {
 		CreateCueList struct {
@@ -1339,7 +1339,7 @@ func TestEasingTypes(t *testing.T) {
 				"cueListId":   cueListID,
 				"name":        easing + " Cue",
 				"cueNumber":   float64(i + 1),
-				"sceneId":     sceneID,
+				"lookId":     lookID,
 				"fadeInTime":  2.0,
 				"fadeOutTime": 1.0,
 				"easingType":  easing,
@@ -1413,7 +1413,7 @@ func TestFadeAllChannels4Universes(t *testing.T) {
 		totalChannels, numUniverses, channelsPerUniverse)
 
 	// First, set all channels to 255 directly using setChannelValue
-	// This bypasses the scene/fixture system for raw channel testing
+	// This bypasses the look/fixture system for raw channel testing
 	t.Log("Phase 1: Setting all channels to 255...")
 	setStart := time.Now()
 
@@ -1586,7 +1586,7 @@ func TestFadeUpAllChannels4Universes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, startResp.DMXOutput[0], "Should start at 0")
 
-	// Create test project, fixture definitions, and scene with all channels at 255
+	// Create test project, fixture definitions, and look with all channels at 255
 	var projectResp struct {
 		CreateProject struct {
 			ID string `json:"id"`
@@ -1688,15 +1688,15 @@ func TestFadeUpAllChannels4Universes(t *testing.T) {
 		}
 	}
 
-	// Create scene
-	var sceneResp struct {
-		CreateScene struct {
+	// Create look
+	var lookResp struct {
+		CreateLook struct {
 			ID string `json:"id"`
-		} `json:"createScene"`
+		} `json:"createLook"`
 	}
 	err = client.Mutate(ctx, `
-		mutation CreateScene($input: CreateSceneInput!) {
-			createScene(input: $input) { id }
+		mutation CreateLook($input: CreateLookInput!) {
+			createLook(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -1704,19 +1704,19 @@ func TestFadeUpAllChannels4Universes(t *testing.T) {
 			"name":          "Full Load",
 			"fixtureValues": fixtureValues,
 		},
-	}, &sceneResp)
+	}, &lookResp)
 	require.NoError(t, err)
-	sceneID := sceneResp.CreateScene.ID
+	lookID := lookResp.CreateLook.ID
 
-	// Create scene board for fade activation
+	// Create look board for fade activation
 	var boardResp struct {
-		CreateSceneBoard struct {
+		CreateLookBoard struct {
 			ID string `json:"id"`
-		} `json:"createSceneBoard"`
+		} `json:"createLookBoard"`
 	}
 	err = client.Mutate(ctx, `
-		mutation CreateBoard($input: CreateSceneBoardInput!) {
-			createSceneBoard(input: $input) { id }
+		mutation CreateBoard($input: CreateLookBoardInput!) {
+			createLookBoard(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
@@ -1726,34 +1726,34 @@ func TestFadeUpAllChannels4Universes(t *testing.T) {
 		},
 	}, &boardResp)
 	require.NoError(t, err)
-	boardID := boardResp.CreateSceneBoard.ID
+	boardID := boardResp.CreateLookBoard.ID
 
-	// Add scene to board
+	// Add look to board
 	err = client.Mutate(ctx, `
-		mutation AddToBoard($input: CreateSceneBoardButtonInput!) {
-			addSceneToBoard(input: $input) { id }
+		mutation AddToBoard($input: CreateLookBoardButtonInput!) {
+			addLookToBoard(input: $input) { id }
 		}
 	`, map[string]interface{}{
 		"input": map[string]interface{}{
-			"sceneBoardId": boardID,
-			"sceneId":      sceneID,
+			"lookBoardId": boardID,
+			"lookId":      lookID,
 			"layoutX":      0,
 			"layoutY":      0,
 		},
 	}, nil)
 	require.NoError(t, err)
 
-	// Activate scene with 3-second fade
-	t.Log("Activating scene with 3-second fade up to 255...")
+	// Activate look with 3-second fade
+	t.Log("Activating look with 3-second fade up to 255...")
 	fadeStart := time.Now()
 
 	err = client.Mutate(ctx, `
-		mutation Activate($boardId: ID!, $sceneId: ID!, $fade: Float) {
-			activateSceneFromBoard(sceneBoardId: $boardId, sceneId: $sceneId, fadeTimeOverride: $fade)
+		mutation Activate($boardId: ID!, $lookId: ID!, $fade: Float) {
+			activateLookFromBoard(lookBoardId: $boardId, lookId: $lookId, fadeTimeOverride: $fade)
 		}
 	`, map[string]interface{}{
 		"boardId": boardID,
-		"sceneId": sceneID,
+		"lookId": lookID,
 		"fade":    3.0,
 	}, nil)
 	require.NoError(t, err)
