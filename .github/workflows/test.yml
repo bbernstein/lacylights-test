@@ -196,14 +196,19 @@ jobs:
         run: |
           ./build/lacylights-go &
           echo "Waiting for backend to start..."
+          # Wait up to 30 seconds for server to be ready
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:4001/health > /dev/null 2>&1; then
+            if curl -sf http://localhost:4001/graphql -X POST \
+              -H "Content-Type: application/json" \
+              -d '{"query":"{ __typename }"}' > /dev/null 2>&1; then
               echo "Backend is ready!"
-              break
+              exit 0
             fi
             echo "Attempt $i: Backend not ready yet..."
             sleep 1
           done
+          echo "Backend failed to start after 30 seconds"
+          exit 1
         env:
           PORT: "4001"
           ARTNET_ENABLED: "false"
@@ -216,14 +221,17 @@ jobs:
         run: |
           PORT=3001 npm run serve:static &
           echo "Waiting for frontend to start..."
+          # Wait up to 30 seconds for frontend to be ready
           for i in $(seq 1 30); do
             if curl -sf http://localhost:3001 > /dev/null 2>&1; then
               echo "Frontend is ready!"
-              break
+              exit 0
             fi
             echo "Attempt $i: Frontend not ready yet..."
             sleep 1
           done
+          echo "Frontend failed to start after 30 seconds"
+          exit 1
 
       - name: Run E2E tests
         working-directory: e2e
