@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Playwright
+playwright-report/
+test-results/
+
+# Generated files
+.pids.json
+.test-project.json
+dist/
+
+# Test database
+*.db
+
+# OS files
+.DS_Store

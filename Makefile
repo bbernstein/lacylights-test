@@ -10,8 +10,9 @@ GO_SERVER_URL ?= http://localhost:4001/graphql
 ARTNET_LISTEN_PORT ?= 6454
 
 .PHONY: all build clean test test-ci test-all test-contracts test-contracts-go \
-        test-dmx test-fade test-preview test-settings lint help deps \
-        start-go-server stop-go-server wait-for-server test-load run-load-tests
+        test-dmx test-fade test-effects test-preview test-settings lint help deps \
+        start-go-server stop-go-server wait-for-server test-load run-load-tests \
+        e2e e2e-ui e2e-setup e2e-headed
 
 # =============================================================================
 # DEFAULT TARGET
@@ -74,6 +75,16 @@ test-fade:
 	@echo "Running fade behavior tests..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) ARTNET_LISTEN_PORT=$(ARTNET_LISTEN_PORT) ARTNET_BROADCAST=127.0.0.1 \
 		$(GO) test $(GOFLAGS) ./contracts/fade/...
+
+# =============================================================================
+# EFFECTS TESTS
+# =============================================================================
+
+## test-effects: Run FX Engine effects contract tests
+test-effects:
+	@echo "Running effects contract tests..."
+	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) ARTNET_LISTEN_PORT=$(ARTNET_LISTEN_PORT) ARTNET_BROADCAST=127.0.0.1 \
+		$(GO) test $(GOFLAGS) ./contracts/effects/...
 
 # =============================================================================
 # PREVIEW TESTS
@@ -228,3 +239,33 @@ run-load-tests: start-go-server
 	@$(MAKE) stop-go-server
 	@echo ""
 	@echo "Load tests completed successfully!"
+
+# =============================================================================
+# E2E TESTS (Playwright)
+# =============================================================================
+
+## e2e-setup: Install Playwright dependencies
+e2e-setup:
+	@echo "Setting up Playwright E2E tests..."
+	@cd e2e && npm install && npx playwright install chromium
+	@echo "E2E setup complete!"
+
+## e2e: Run Playwright E2E tests (starts backend and frontend automatically)
+e2e: e2e-setup
+	@echo "Running Playwright E2E tests..."
+	@cd e2e && npm test
+
+## e2e-ui: Run E2E tests with Playwright UI (for debugging)
+e2e-ui: e2e-setup
+	@echo "Running E2E tests with Playwright UI..."
+	@cd e2e && npm run test:ui
+
+## e2e-headed: Run E2E tests in headed browser mode
+e2e-headed: e2e-setup
+	@echo "Running E2E tests in headed mode..."
+	@cd e2e && npm run test:headed
+
+## e2e-debug: Run E2E tests in debug mode
+e2e-debug: e2e-setup
+	@echo "Running E2E tests in debug mode..."
+	@cd e2e && npm run test:debug
