@@ -1,7 +1,7 @@
 import { FullConfig } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
-import { waitForService } from "./helpers/wait";
+import { waitForService, waitForGraphQL } from "./helpers/wait";
 
 const PROJECT_FILE = path.join(__dirname, ".test-project.json");
 
@@ -17,10 +17,10 @@ const PROJECT_FILE = path.join(__dirname, ".test-project.json");
 async function globalSetup(config: FullConfig): Promise<void> {
   console.log("\n🚀 Setting up E2E test environment...\n");
 
-  // Wait for backend to be ready
+  // Wait for backend to be ready (use GraphQL query as health check)
   console.log("⏳ Waiting for backend on port 4001...");
   try {
-    await waitForService("http://localhost:4001/health", 30000);
+    await waitForGraphQL("http://localhost:4001/graphql", 10000);
     console.log("✅ Backend is ready");
   } catch (error) {
     console.error("❌ Backend is not running on port 4001");
@@ -32,7 +32,7 @@ async function globalSetup(config: FullConfig): Promise<void> {
   // Wait for frontend to be ready
   console.log("⏳ Waiting for frontend on port 3001...");
   try {
-    await waitForService("http://localhost:3001", 30000);
+    await waitForService("http://localhost:3001", 10000);
     console.log("✅ Frontend is ready");
   } catch (error) {
     console.error("❌ Frontend is not running on port 3001");
