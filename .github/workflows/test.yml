@@ -123,10 +123,6 @@ jobs:
     # E2E tests use CORS_ALLOW_ALL=true on the backend to allow cross-origin
     # requests from the frontend (localhost:3001) to the API (localhost:4001).
     # This is the server-side solution to browser CORS restrictions in CI.
-    #
-    # Note: continue-on-error is kept temporarily until lacylights-go PR #57
-    # is merged and this workflow uses the updated backend.
-    continue-on-error: true
 
     steps:
       - name: Display E2E test configuration
@@ -145,8 +141,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: bbernstein/lacylights-go
-          # TEMPORARY: Use feat/cors-allow-all branch until PR #57 is merged
-          ref: ${{ github.event.inputs.lacylights-go-branch || 'feat/cors-allow-all' }}
+          ref: ${{ github.event.inputs.lacylights-go-branch || 'main' }}
           path: lacylights-go
           token: ${{ secrets.GITHUB_TOKEN }}
 
