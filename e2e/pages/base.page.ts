@@ -23,6 +23,7 @@ export class BasePage {
   /**
    * Wait for the app to be ready (project selected/created).
    * The frontend shows "No project selected" until a project is available.
+   * This is a best-effort wait - if it times out, tests will continue.
    */
   async waitForAppReady(): Promise<void> {
     // Wait for "No project selected" to disappear (project is being created)
@@ -37,14 +38,12 @@ export class BasePage {
           const creatingMsg = body.includes("Creating default project");
           return !noProjectMsg && !creatingMsg;
         },
-        { timeout: 15000 }
+        { timeout: 10000 }
       );
     } catch {
-      // If timeout, check if there's an error we can report
-      const bodyText = await this.page.locator("body").textContent();
-      if (bodyText?.includes("Failed to load")) {
-        console.warn("Warning: Backend connection issue detected");
-      }
+      // Timeout or other error - log and continue
+      // In CI, this may fail due to browser CORS restrictions
+      console.warn("Warning: App ready check timed out - backend connection may have issues");
       // Continue anyway - the actual test assertions will fail with better error messages
     }
   }
