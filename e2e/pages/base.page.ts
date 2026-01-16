@@ -12,10 +12,41 @@ export class BasePage {
 
   /**
    * Navigate to a route and wait for network to settle.
+   * Also waits for the app to be ready (project selected).
    */
   async goto(path: string): Promise<void> {
     await this.page.goto(path);
     await this.page.waitForLoadState("networkidle");
+    await this.waitForAppReady();
+  }
+
+  /**
+   * Wait for the app to be ready (project selected/created).
+   * The frontend shows "No project selected" until a project is available.
+   */
+  async waitForAppReady(): Promise<void> {
+    // Wait for "No project selected" to disappear (project is being created)
+    // or for the navigation to be interactive
+    try {
+      await this.page.waitForFunction(
+        () => {
+          const body = document.body.textContent || "";
+          // App is ready when "No project selected" message is gone
+          // AND we're not stuck on "Creating default project"
+          const noProjectMsg = body.includes("No project selected");
+          const creatingMsg = body.includes("Creating default project");
+          return !noProjectMsg && !creatingMsg;
+        },
+        { timeout: 15000 }
+      );
+    } catch {
+      // If timeout, check if there's an error we can report
+      const bodyText = await this.page.locator("body").textContent();
+      if (bodyText?.includes("Failed to load")) {
+        console.warn("Warning: Backend connection issue detected");
+      }
+      // Continue anyway - the actual test assertions will fail with better error messages
+    }
   }
 
   /**
