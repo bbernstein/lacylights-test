@@ -211,7 +211,7 @@ jobs:
       - name: Start frontend server
         working-directory: lacylights-fe
         run: |
-          npm run serve:static -- -p 3001 &
+          PORT=3001 npm run serve:static &
           echo "Waiting for frontend to start..."
           for i in $(seq 1 30); do
             if curl -sf http://localhost:3001 > /dev/null 2>&1; then
