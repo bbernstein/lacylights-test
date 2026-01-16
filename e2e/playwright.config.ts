@@ -16,7 +16,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: 1, // Single worker for state consistency
   reporter: [["html"], ["list"]],
-  timeout: 10000, // 10 second timeout per test
+  timeout: 30000, // 30 second timeout per test (first test needs app startup time)
 
   use: {
     baseURL: "http://localhost:3001",
