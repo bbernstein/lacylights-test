@@ -28,7 +28,20 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        // In CI, disable web security to allow cross-origin requests between
+        // the static frontend (localhost:3001) and backend API (localhost:4001).
+        // This is safe for testing because both services are local and trusted.
+        launchOptions: process.env.CI
+          ? {
+              args: [
+                "--disable-web-security",
+                "--disable-features=IsolateOrigins,site-per-process",
+              ],
+            }
+          : undefined,
+      },
     },
   ],
 
