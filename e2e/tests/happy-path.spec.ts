@@ -28,18 +28,41 @@ test.describe("LacyLights Happy Path", () => {
   test.beforeEach(async ({ page }) => {
     if (process.env.CI) {
       // Intercept all requests to the backend and ensure CORS headers are present
-      await page.route("**/localhost:4001/**", async (route) => {
-        const response = await route.fetch();
-        const headers = {
-          ...response.headers(),
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        };
-        await route.fulfill({
-          response,
-          headers,
-        });
+      // Match both HTTP and WebSocket URLs to the backend
+      await page.route(/localhost:4001/, async (route) => {
+        const request = route.request();
+
+        // Handle CORS preflight requests (OPTIONS)
+        if (request.method() === "OPTIONS") {
+          await route.fulfill({
+            status: 204,
+            headers: {
+              "Access-Control-Allow-Origin": "*",
+              "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+              "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
+              "Access-Control-Max-Age": "86400",
+            },
+          });
+          return;
+        }
+
+        // For other requests, forward and add CORS headers to response
+        try {
+          const response = await route.fetch();
+          const headers = {
+            ...response.headers(),
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
+          };
+          await route.fulfill({
+            response,
+            headers,
+          });
+        } catch {
+          // If fetch fails, just continue with the original request
+          await route.continue();
+        }
       });
     }
   });
