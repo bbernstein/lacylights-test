@@ -24,11 +24,11 @@ test.describe("LacyLights Happy Path", () => {
   test.describe.configure({ mode: "serial" });
 
   // In CI, set up route interception to handle CORS for cross-origin requests
-  // between the frontend (localhost:3001) and backend (localhost:4001)
+  // between the frontend (localhost:3001) and backend (localhost:4001).
+  // This runs BEFORE each test, so routes are configured before any navigation.
   test.beforeEach(async ({ page }) => {
     if (process.env.CI) {
       // Intercept all requests to the backend and ensure CORS headers are present
-      // Match both HTTP and WebSocket URLs to the backend
       await page.route(/localhost:4001/, async (route) => {
         const request = route.request();
 
@@ -39,7 +39,8 @@ test.describe("LacyLights Happy Path", () => {
             headers: {
               "Access-Control-Allow-Origin": "*",
               "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-              "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
+              "Access-Control-Allow-Headers":
+                "Content-Type, Authorization, Accept, X-Requested-With",
               "Access-Control-Max-Age": "86400",
             },
           });
@@ -53,7 +54,8 @@ test.describe("LacyLights Happy Path", () => {
             ...response.headers(),
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
+            "Access-Control-Allow-Headers":
+              "Content-Type, Authorization, Accept, X-Requested-With",
           };
           await route.fulfill({
             response,
