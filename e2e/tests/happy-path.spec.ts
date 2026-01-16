@@ -28,12 +28,22 @@ test.describe("LacyLights Happy Path", () => {
   // This runs BEFORE each test, so routes are configured before any navigation.
   test.beforeEach(async ({ page }) => {
     if (process.env.CI) {
+      // Log all console messages from the page to help debug CORS issues
+      page.on("console", (msg) => {
+        if (msg.type() === "error") {
+          console.log(`Browser console error: ${msg.text()}`);
+        }
+      });
+
       // Intercept all requests to the backend and ensure CORS headers are present
-      await page.route(/localhost:4001/, async (route) => {
+      // Use a glob pattern instead of regex to ensure proper matching
+      await page.route("**/localhost:4001/**", async (route) => {
         const request = route.request();
+        console.log(`Intercepted request: ${request.method()} ${request.url()}`);
 
         // Handle CORS preflight requests (OPTIONS)
         if (request.method() === "OPTIONS") {
+          console.log("Handling OPTIONS preflight request");
           await route.fulfill({
             status: 204,
             headers: {
@@ -48,24 +58,23 @@ test.describe("LacyLights Happy Path", () => {
         }
 
         // For other requests, forward and add CORS headers to response
-        try {
-          const response = await route.fetch();
-          const headers = {
-            ...response.headers(),
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-            "Access-Control-Allow-Headers":
-              "Content-Type, Authorization, Accept, X-Requested-With",
-          };
-          await route.fulfill({
-            response,
-            headers,
-          });
-        } catch {
-          // If fetch fails, just continue with the original request
-          await route.continue();
-        }
+        console.log(`Forwarding ${request.method()} request to backend`);
+        const response = await route.fetch();
+        const headers = {
+          ...response.headers(),
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers":
+            "Content-Type, Authorization, Accept, X-Requested-With",
+        };
+        console.log(`Response status: ${response.status()}`);
+        await route.fulfill({
+          response,
+          headers,
+        });
       });
+
+      console.log("Route interception configured for CI");
     }
   });
 
