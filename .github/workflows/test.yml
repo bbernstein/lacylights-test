@@ -178,6 +178,18 @@ jobs:
         working-directory: lacylights-fe
         run: npm ci
 
+      - name: Configure frontend for E2E testing
+        working-directory: lacylights-fe
+        run: |
+          # Create .env.local to override .env.production with E2E test URLs
+          # .env.local takes precedence over .env.production in Next.js
+          cat > .env.local << 'EOF'
+          NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4001/graphql
+          NEXT_PUBLIC_GRAPHQL_WS_URL=ws://localhost:4001/graphql
+          EOF
+          echo "Created .env.local with E2E test configuration:"
+          cat .env.local
+
       - name: Build frontend static export
         working-directory: lacylights-fe
         run: npm run build:static
