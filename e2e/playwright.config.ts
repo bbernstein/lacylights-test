@@ -38,6 +38,9 @@ export default defineConfig({
               args: [
                 "--disable-web-security",
                 "--disable-features=IsolateOrigins,site-per-process",
+                "--disable-site-isolation-trials",
+                "--allow-running-insecure-content",
+                "--disable-features=BlockInsecurePrivateNetworkRequests",
               ],
             }
           : undefined,

@@ -23,6 +23,27 @@ import { EffectsPage, EffectEditorPage } from "../pages/effects.page";
 test.describe("LacyLights Happy Path", () => {
   test.describe.configure({ mode: "serial" });
 
+  // In CI, set up route interception to handle CORS for cross-origin requests
+  // between the frontend (localhost:3001) and backend (localhost:4001)
+  test.beforeEach(async ({ page }) => {
+    if (process.env.CI) {
+      // Intercept all requests to the backend and ensure CORS headers are present
+      await page.route("**/localhost:4001/**", async (route) => {
+        const response = await route.fetch();
+        const headers = {
+          ...response.headers(),
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        };
+        await route.fulfill({
+          response,
+          headers,
+        });
+      });
+    }
+  });
+
   // Shared test data
   // Note: Fixture models must match actual Open Fixture Library definitions
   const testData = {
