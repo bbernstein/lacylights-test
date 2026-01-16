@@ -24,7 +24,7 @@ test.describe("LacyLights Happy Path", () => {
   test.describe.configure({ mode: "serial" });
 
   // In CI, set up route interception to handle CORS for cross-origin requests
-  // between the frontend (localhost:3001) and backend (localhost:4001).
+  // between the frontend (localhost:3001) and backend (localhost:4000).
   // This runs BEFORE each test, so routes are configured before any navigation.
   test.beforeEach(async ({ page }) => {
     if (process.env.CI) {
@@ -37,7 +37,7 @@ test.describe("LacyLights Happy Path", () => {
 
       // Intercept all requests to the backend and ensure CORS headers are present
       // Use a glob pattern instead of regex to ensure proper matching
-      await page.route("**/localhost:4001/**", async (route) => {
+      await page.route("**/localhost:4000/**", async (route) => {
         const request = route.request();
         console.log(`Intercepted request: ${request.method()} ${request.url()}`);
 

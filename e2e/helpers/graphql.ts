@@ -2,7 +2,7 @@
  * GraphQL client utilities for E2E test setup and teardown
  */
 
-const GRAPHQL_URL = "http://localhost:4001/graphql";
+const GRAPHQL_URL = "http://localhost:4000/graphql";
 
 export interface GraphQLResponse<T = unknown> {
   data?: T;

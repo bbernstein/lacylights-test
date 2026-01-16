@@ -4,7 +4,7 @@ import { defineConfig, devices } from "@playwright/test";
  * Playwright configuration for LacyLights E2E tests.
  *
  * Tests run against:
- * - Backend: http://localhost:4001 (GraphQL API)
+ * - Backend: http://localhost:4000 (GraphQL API)
  * - Frontend: http://localhost:3001 (Next.js)
  *
  * Global setup starts both services, global teardown stops them.
