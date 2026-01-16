@@ -145,7 +145,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: bbernstein/lacylights-go
-          ref: ${{ github.event.inputs.lacylights-go-branch || 'main' }}
+          # TEMPORARY: Use feat/cors-allow-all branch until PR #57 is merged
+          ref: ${{ github.event.inputs.lacylights-go-branch || 'feat/cors-allow-all' }}
           path: lacylights-go
           token: ${{ secrets.GITHUB_TOKEN }}
 
