@@ -30,20 +30,15 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        // In CI, disable web security to allow cross-origin requests between
-        // the static frontend (localhost:3001) and backend API (localhost:4001).
-        // This is safe for testing because both services are local and trusted.
-        // Note: --disable-web-security requires --user-data-dir to work properly.
+        // In CI, server-side CORS_ALLOW_ALL=true handles cross-origin requests.
+        // These browser flags provide additional CORS relaxation as a fallback.
         launchOptions: process.env.CI
           ? {
               args: [
                 "--disable-web-security",
                 "--disable-site-isolation-trials",
                 "--allow-running-insecure-content",
-                // Combine all disabled features into one flag to avoid conflicts
                 "--disable-features=IsolateOrigins,site-per-process,BlockInsecurePrivateNetworkRequests",
-                // Required for --disable-web-security to work
-                "--user-data-dir=/tmp/chrome-test-profile",
               ],
             }
           : undefined,
