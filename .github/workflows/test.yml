@@ -210,7 +210,7 @@ jobs:
           PORT: "4000"
           ARTNET_ENABLED: "false"
           DATABASE_URL: "file:./test-e2e.db"
-          OFL_IMPORT_ENABLED: "false"
+          OFL_IMPORT_ENABLED: "true"  # Enable fixture definitions import for E2E tests
           CORS_ALLOW_ALL: "true"  # Enable all CORS origins for E2E testing
 
       - name: Start frontend server
