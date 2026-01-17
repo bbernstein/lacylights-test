@@ -86,16 +86,16 @@ test.describe("LacyLights Happy Path", () => {
       {
         name: "Front Wash 1",
         manufacturer: "Generic",
-        model: "RGB Fader",  // 3 channels
+        model: "RGB Fader",  // 6 channels in 16-bit mode
         universe: 1,
         startChannel: 1,
       },
       {
         name: "Stage Left Par",
         manufacturer: "Generic",
-        model: "Strobe",  // 1 channel
+        model: "Strobe",  // 2 channels in Dimmer + Frequency mode
         universe: 1,
-        startChannel: 4,
+        startChannel: 7,  // RGB Fader uses 6 channels (1-6) in 16-bit mode
       },
     ],
     looks: [
