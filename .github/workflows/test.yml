@@ -180,7 +180,10 @@ jobs:
 
       - name: Build frontend static export
         working-directory: lacylights-fe
-        run: npm run build:static
+        run: |
+          # Clear Next.js cache to ensure env vars are picked up
+          rm -rf .next out
+          npm run build:static
         env:
           # Build with test backend URLs (port 4001 to avoid conflicts with dev)
           NEXT_PUBLIC_GRAPHQL_URL: "http://localhost:4001/graphql"
