@@ -181,6 +181,10 @@ jobs:
       - name: Build frontend static export
         working-directory: lacylights-fe
         run: npm run build:static
+        env:
+          # Build with test backend URLs (port 4001 to avoid conflicts with dev)
+          NEXT_PUBLIC_GRAPHQL_URL: "http://localhost:4001/graphql"
+          NEXT_PUBLIC_GRAPHQL_WS_URL: "ws://localhost:4001/graphql"
 
       - name: Install Playwright dependencies
         working-directory: e2e

@@ -23,61 +23,48 @@ import { EffectsPage, EffectEditorPage } from "../pages/effects.page";
 test.describe("LacyLights Happy Path", () => {
   test.describe.configure({ mode: "serial" });
 
-  // In CI, set up route interception to proxy requests from frontend (port 4000) to backend (port 4001).
-  // The static frontend build expects the backend on port 4000, but tests run backend on 4001
-  // to avoid conflicts with development. This also handles CORS headers.
-  // This runs BEFORE each test, so routes are configured before any navigation.
+  // In CI, set up logging to debug any issues.
+  // The frontend is built with NEXT_PUBLIC_GRAPHQL_URL pointing to port 4001.
+  // Backend runs on 4001 with CORS_ALLOW_ALL=true to handle cross-origin requests.
   test.beforeEach(async ({ page }) => {
     if (process.env.CI) {
-      // Log all console messages from the page to help debug issues
+      // Log browser console errors to help debug issues
       page.on("console", (msg) => {
         if (msg.type() === "error") {
           console.log(`Browser console error: ${msg.text()}`);
         }
       });
 
-      // Intercept all requests to port 4000 and proxy them to port 4001
-      // Use a glob pattern instead of regex to ensure proper matching
+      // Fallback: If any code still references port 4000, proxy to 4001
+      // This should rarely be triggered since frontend is built with port 4001
       await page.route("**/localhost:4000/**", async (route) => {
         const request = route.request();
         const originalUrl = request.url();
-        // Rewrite port 4000 -> 4001
         const proxiedUrl = originalUrl.replace(":4000", ":4001");
-        console.log(`Proxying request: ${request.method()} ${originalUrl} -> ${proxiedUrl}`);
+        console.log(`[Fallback proxy] ${request.method()} ${originalUrl} -> ${proxiedUrl}`);
 
-        // Handle CORS preflight requests (OPTIONS)
         if (request.method() === "OPTIONS") {
-          console.log("Handling OPTIONS preflight request");
           await route.fulfill({
             status: 204,
             headers: {
               "Access-Control-Allow-Origin": "*",
               "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-              "Access-Control-Allow-Headers":
-                "Content-Type, Authorization, Accept, X-Requested-With",
+              "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
               "Access-Control-Max-Age": "86400",
             },
           });
           return;
         }
 
-        // For other requests, forward to port 4001 and add CORS headers to response
         const response = await route.fetch({ url: proxiedUrl });
-        const headers = {
-          ...response.headers(),
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-          "Access-Control-Allow-Headers":
-            "Content-Type, Authorization, Accept, X-Requested-With",
-        };
-        console.log(`Response status: ${response.status()}`);
         await route.fulfill({
           response,
-          headers,
+          headers: {
+            ...response.headers(),
+            "Access-Control-Allow-Origin": "*",
+          },
         });
       });
-
-      console.log("Route interception configured for CI (port 4000 -> 4001 proxy)");
     }
   });
 
