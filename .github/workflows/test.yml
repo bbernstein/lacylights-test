@@ -75,7 +75,7 @@ jobs:
           echo "Waiting for server to start..."
           # Wait up to 30 seconds for server to be ready
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:4000/graphql -X POST \
+            if curl -sf http://localhost:4001/graphql -X POST \
               -H "Content-Type: application/json" \
               -d '{"query":"{ __typename }"}' > /dev/null 2>&1; then
               echo "Server is ready!"
@@ -87,7 +87,7 @@ jobs:
           echo "Server failed to start after 30 seconds"
           exit 1
         env:
-          PORT: "4000"
+          PORT: "4001"
           ARTNET_ENABLED: "false"
           DATABASE_URL: "file:./test.db"
           OFL_IMPORT_ENABLED: "false"
@@ -95,7 +95,7 @@ jobs:
       - name: Run CI tests
         run: make test-ci
         env:
-          GO_SERVER_URL: http://localhost:4000/graphql
+          GO_SERVER_URL: http://localhost:4001/graphql
 
   lint:
     runs-on: ubuntu-latest
@@ -120,8 +120,8 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     needs: [lint]
-    # E2E tests run backend on port 4000 (frontend's default) to avoid
-    # needing environment variable configuration in the static build.
+    # E2E tests run backend on port 4001 to avoid conflicts with development (port 4000).
+    # Playwright route interception proxies frontend requests from 4000 -> 4001.
     # CORS_ALLOW_ALL=true handles cross-origin requests from frontend (localhost:3001).
 
     steps:
@@ -195,7 +195,7 @@ jobs:
           echo "Waiting for backend to start..."
           # Wait up to 30 seconds for server to be ready
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:4000/graphql -X POST \
+            if curl -sf http://localhost:4001/graphql -X POST \
               -H "Content-Type: application/json" \
               -d '{"query":"{ __typename }"}' > /dev/null 2>&1; then
               echo "Backend is ready!"
@@ -207,7 +207,7 @@ jobs:
           echo "Backend failed to start after 30 seconds"
           exit 1
         env:
-          PORT: "4000"
+          PORT: "4001"
           ARTNET_ENABLED: "false"
           DATABASE_URL: "file:./test-e2e.db"
           OFL_IMPORT_ENABLED: "true"  # Enable fixture definitions import for E2E tests

@@ -18,14 +18,14 @@ async function globalSetup(config: FullConfig): Promise<void> {
   console.log("\n🚀 Setting up E2E test environment...\n");
 
   // Wait for backend to be ready (use GraphQL query as health check)
-  console.log("⏳ Waiting for backend on port 4000...");
+  console.log("⏳ Waiting for backend on port 4001...");
   try {
-    await waitForGraphQL("http://localhost:4000/graphql", 10000);
+    await waitForGraphQL("http://localhost:4001/graphql", 10000);
     console.log("✅ Backend is ready");
   } catch (error) {
-    console.error("❌ Backend is not running on port 4000");
+    console.error("❌ Backend is not running on port 4001");
     console.error("   Run: scripts/run-tests.sh e2e");
-    console.error("   Or start backend manually: cd ../lacylights-go && PORT=4000 make run");
+    console.error("   Or start backend manually: cd ../lacylights-go && PORT=4001 make run");
     throw error;
   }
 
@@ -54,7 +54,7 @@ async function createTestProject(): Promise<void> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const projectName = `E2E Test ${timestamp}`;
 
-  const response = await fetch("http://localhost:4000/graphql", {
+  const response = await fetch("http://localhost:4001/graphql", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
