@@ -187,6 +187,8 @@ jobs:
           # Create .env.local with test backend URLs (port 4001 to avoid conflicts with dev)
           echo 'NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4001/graphql' > .env.local
           echo 'NEXT_PUBLIC_GRAPHQL_WS_URL=ws://localhost:4001/graphql' >> .env.local
+          echo 'NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4001/graphql' > .env.production
+          echo 'NEXT_PUBLIC_GRAPHQL_WS_URL=ws://localhost:4001/graphql' >> .env.production
           npm run build:static
         env:
           NEXT_PUBLIC_GRAPHQL_URL: "http://localhost:4001/graphql"
