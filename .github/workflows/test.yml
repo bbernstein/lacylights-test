@@ -181,13 +181,13 @@ jobs:
       - name: Build frontend static export
         working-directory: lacylights-fe
         run: |
-          # Clear Next.js cache to ensure env vars are picked up
+          # Clear Next.js cache and remove .env.production (it has relative paths for nginx)
           rm -rf .next out
+          rm -f .env.production
+          # Create .env.local with test backend URLs (port 4001 to avoid conflicts with dev)
+          echo 'NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4001/graphql' > .env.local
+          echo 'NEXT_PUBLIC_GRAPHQL_WS_URL=ws://localhost:4001/graphql' >> .env.local
           npm run build:static
-        env:
-          # Build with test backend URLs (port 4001 to avoid conflicts with dev)
-          NEXT_PUBLIC_GRAPHQL_URL: "http://localhost:4001/graphql"
-          NEXT_PUBLIC_GRAPHQL_WS_URL: "ws://localhost:4001/graphql"
 
       - name: Install Playwright dependencies
         working-directory: e2e
