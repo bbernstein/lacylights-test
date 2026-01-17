@@ -8,24 +8,24 @@ on:
   workflow_dispatch:
     inputs:
       lacylights-test-branch:
-        description: 'Branch of lacylights-test to test'
+        description: "Branch of lacylights-test to test"
         required: false
-        default: 'main'
+        default: "main"
         type: string
       lacylights-go-branch:
-        description: 'Branch of lacylights-go to test against'
+        description: "Branch of lacylights-go to test against"
         required: false
-        default: 'main'
+        default: "main"
         type: string
       lacylights-fe-branch:
-        description: 'Branch of lacylights-fe to test (future use)'
+        description: "Branch of lacylights-fe to test (future use)"
         required: false
-        default: 'main'
+        default: "main"
         type: string
       lacylights-mcp-branch:
-        description: 'Branch of lacylights-mcp to test (future use)'
+        description: "Branch of lacylights-mcp to test (future use)"
         required: false
-        default: 'main'
+        default: "main"
         type: string
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: "1.24"
           cache-dependency-path: |
             go.sum
             lacylights-go/go.sum
@@ -109,10 +109,160 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: "1.24"
 
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
           args: ./...
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [lint]
+    # E2E tests run backend on port 4001 to avoid conflicts with development (port 4000).
+    # Playwright route interception proxies frontend requests from 4000 -> 4001.
+    # CORS_ALLOW_ALL=true handles cross-origin requests from frontend (localhost:3001).
+
+    steps:
+      - name: Display E2E test configuration
+        run: |
+          echo "E2E Testing configuration:"
+          echo "  lacylights-test: ${{ github.event.inputs.lacylights-test-branch || github.ref_name }}"
+          echo "  lacylights-go: ${{ github.event.inputs.lacylights-go-branch || 'main' }}"
+          echo "  lacylights-fe: ${{ github.event.inputs.lacylights-fe-branch || 'main' }}"
+
+      - name: Checkout test repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.lacylights-test-branch || github.ref }}
+
+      - name: Checkout lacylights-go server
+        uses: actions/checkout@v4
+        with:
+          repository: bbernstein/lacylights-go
+          ref: ${{ github.event.inputs.lacylights-go-branch || 'main' }}
+          path: lacylights-go
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout lacylights-fe frontend
+        uses: actions/checkout@v4
+        with:
+          repository: bbernstein/lacylights-fe
+          ref: ${{ github.event.inputs.lacylights-fe-branch || 'main' }}
+          path: lacylights-fe
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: lacylights-go/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            e2e/package-lock.json
+            lacylights-fe/package-lock.json
+
+      - name: Build lacylights-go server
+        working-directory: lacylights-go
+        run: |
+          go mod download
+          go build -o build/lacylights-go ./cmd/server
+
+      - name: Install frontend dependencies
+        working-directory: lacylights-fe
+        run: npm ci
+
+      - name: Build frontend static export
+        working-directory: lacylights-fe
+        run: |
+          # Clear Next.js cache and remove .env.production (it has relative paths for nginx)
+          rm -rf .next out
+          rm -f .env.production
+          # Create .env.local with test backend URLs (port 4001 to avoid conflicts with dev)
+          echo 'NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4001/graphql' > .env.local
+          echo 'NEXT_PUBLIC_GRAPHQL_WS_URL=ws://localhost:4001/graphql' >> .env.local
+          echo 'NEXT_PUBLIC_GRAPHQL_URL=http://localhost:4001/graphql' > .env.production
+          echo 'NEXT_PUBLIC_GRAPHQL_WS_URL=ws://localhost:4001/graphql' >> .env.production
+          npm run build:static
+        env:
+          NEXT_PUBLIC_GRAPHQL_URL: "http://localhost:4001/graphql"
+          NEXT_PUBLIC_GRAPHQL_WS_URL: "ws://localhost:4001/graphql"
+
+      - name: Install Playwright dependencies
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+
+      - name: Start backend server
+        working-directory: lacylights-go
+        run: |
+          ./build/lacylights-go &
+          echo "Waiting for backend to start..."
+          # Wait up to 30 seconds for server to be ready
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4001/graphql -X POST \
+              -H "Content-Type: application/json" \
+              -d '{"query":"{ __typename }"}' > /dev/null 2>&1; then
+              echo "Backend is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: Backend not ready yet..."
+            sleep 1
+          done
+          echo "Backend failed to start after 30 seconds"
+          exit 1
+        env:
+          PORT: "4001"
+          ARTNET_ENABLED: "false"
+          DATABASE_URL: "file:./test-e2e.db"
+          OFL_IMPORT_ENABLED: "true" # Enable fixture definitions import for E2E tests
+          CORS_ALLOW_ALL: "true" # Enable all CORS origins for E2E testing
+
+      - name: Start frontend server
+        working-directory: lacylights-fe
+        run: |
+          PORT=3001 npm run serve:static &
+          echo "Waiting for frontend to start..."
+          # Wait up to 30 seconds for frontend to be ready
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001 > /dev/null 2>&1; then
+              echo "Frontend is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: Frontend not ready yet..."
+            sleep 1
+          done
+          echo "Frontend failed to start after 30 seconds"
+          exit 1
+        env:
+          NEXT_PUBLIC_GRAPHQL_URL: "http://localhost:4001/graphql"
+          NEXT_PUBLIC_GRAPHQL_WS_URL: "ws://localhost:4001/graphql"
+
+      - name: Run E2E tests
+        working-directory: e2e
+        run: npx playwright test --reporter=list
+        env:
+          CI: true
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 30
+
+      - name: Upload test screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-screenshots
+          path: e2e/test-results/
+          retention-days: 30

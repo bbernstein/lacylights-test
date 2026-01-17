@@ -24,6 +24,10 @@ func skipDMXTests() bool {
 
 // setupPlaybackTest creates a project with fixtures, looks, and a cue list for playback testing.
 func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context) (projectID, cueListID, look1ID, look2ID string) {
+	// Ensure clean starting state
+	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
+	time.Sleep(200 * time.Millisecond)
+
 	// Create project
 	var projectResp struct {
 		CreateProject struct {
@@ -225,10 +229,14 @@ func setupPlaybackTest(t *testing.T, client *graphql.Client, ctx context.Context
 }
 
 func cleanupPlaybackTest(client *graphql.Client, ctx context.Context, projectID string) {
-	// Fade to black before cleanup
+	// Fade to black before cleanup and wait for fade engine to settle
 	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
+	time.Sleep(200 * time.Millisecond)
 	_ = client.Mutate(ctx, `mutation DeleteProject($id: ID!) { deleteProject(id: $id) }`,
 		map[string]interface{}{"id": projectID}, nil)
+	// Extra fadeToBlack after deletion to ensure clean state for next test
+	_ = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
+	time.Sleep(100 * time.Millisecond)
 }
 
 // TestCueListPlayback tests starting, navigating, and stopping cue list playback.

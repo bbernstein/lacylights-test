@@ -858,8 +858,12 @@ func TestUnfadableChannelTypes(t *testing.T) {
 	require.NoError(t, err)
 	lookBoardID := lookBoardResp.CreateLookBoard.ID
 
-	// Start Art-Net capture
+	// Start Art-Net capture - first test if we can bind to the port
 	receiver := artnet.NewReceiver(getArtNetPort())
+	if err := receiver.Start(); err != nil {
+		t.Skipf("Art-Net port not available for capture: %v", err)
+	}
+	_ = receiver.Stop()
 
 	// Clear any existing DMX state first
 	err = client.Mutate(ctx, `mutation { fadeToBlack(fadeOutTime: 0) }`, nil, nil)
@@ -871,8 +875,10 @@ func TestUnfadableChannelTypes(t *testing.T) {
 	defer captureCancel()
 
 	frameChan := make(chan []artnet.Frame)
+	errChan := make(chan error, 1)
 	go func() {
-		frames, _ := receiver.CaptureFrames(captureCtx, 2500*time.Millisecond)
+		frames, captureErr := receiver.CaptureFrames(captureCtx, 2500*time.Millisecond)
+		errChan <- captureErr
 		frameChan <- frames
 	}()
 
@@ -892,7 +898,11 @@ func TestUnfadableChannelTypes(t *testing.T) {
 	require.NoError(t, err)
 
 	// Wait for capture to complete
+	captureErr := <-errChan
 	frames := <-frameChan
+	if captureErr != nil {
+		t.Skipf("Art-Net capture failed: %v", captureErr)
+	}
 	t.Logf("Captured %d Art-Net frames", len(frames))
 	require.Greater(t, len(frames), 10, "Should capture multiple frames during fade")
 
