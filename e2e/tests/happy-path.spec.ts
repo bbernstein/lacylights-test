@@ -80,21 +80,22 @@ test.describe("LacyLights Happy Path", () => {
 
   // Shared test data
   // Note: Fixture models must match actual Open Fixture Library definitions
+  // Use proper casing as it appears in OFL (e.g., "RGB Fader", not "rgb-fader")
   const testData = {
     fixtures: [
       {
         name: "Front Wash 1",
         manufacturer: "Generic",
-        model: "Dimmer",
+        model: "RGB Fader",  // 3 channels
         universe: 1,
         startChannel: 1,
       },
       {
         name: "Stage Left Par",
         manufacturer: "Generic",
-        model: "RGB Fader",
+        model: "Strobe",  // 1 channel
         universe: 1,
-        startChannel: 2,
+        startChannel: 4,
       },
     ],
     looks: [
