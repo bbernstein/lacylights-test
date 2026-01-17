@@ -23,25 +23,17 @@ import { EffectsPage, EffectEditorPage } from "../pages/effects.page";
 test.describe("LacyLights Happy Path", () => {
   test.describe.configure({ mode: "serial" });
 
-  // In CI, set up logging to debug any issues.
+  // In CI, set up a fallback proxy in case any code still references port 4000.
   // The frontend is built with NEXT_PUBLIC_GRAPHQL_URL pointing to port 4001.
   // Backend runs on 4001 with CORS_ALLOW_ALL=true to handle cross-origin requests.
   test.beforeEach(async ({ page }) => {
     if (process.env.CI) {
-      // Log browser console errors to help debug issues
-      page.on("console", (msg) => {
-        if (msg.type() === "error") {
-          console.log(`Browser console error: ${msg.text()}`);
-        }
-      });
-
       // Fallback: If any code still references port 4000, proxy to 4001
       // This should rarely be triggered since frontend is built with port 4001
       await page.route("**/localhost:4000/**", async (route) => {
         const request = route.request();
         const originalUrl = request.url();
         const proxiedUrl = originalUrl.replace(":4000", ":4001");
-        console.log(`[Fallback proxy] ${request.method()} ${originalUrl} -> ${proxiedUrl}`);
 
         if (request.method() === "OPTIONS") {
           await route.fulfill({
