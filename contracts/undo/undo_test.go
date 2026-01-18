@@ -65,7 +65,7 @@ func getOrCreateFixtureDefinition(t *testing.T, client *graphql.Client, ctx cont
 			"type":         "DIMMER",
 			"channels": []map[string]interface{}{
 				{
-					"name":         "Dimmer",
+					"name":         "Intensity",
 					"type":         "INTENSITY",
 					"offset":       0,
 					"minValue":     0,
@@ -1333,7 +1333,6 @@ func TestUndoRedo_FixtureInstanceCreate(t *testing.T) {
 	// Note: This test may fail due to a known backend issue where redo of fixture creation
 	// causes "UNIQUE constraint failed: instance_channels.id" error. This occurs because
 	// the redo operation attempts to recreate channels with the same IDs.
-	// See: https://github.com/bbernstein/lacylights-go/issues/XXX (if tracked)
 	t.Run("RedoCreateFixture", func(t *testing.T) {
 		var redoResp struct {
 			Redo struct {
