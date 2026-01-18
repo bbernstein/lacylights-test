@@ -915,6 +915,7 @@ func TestUndoRedo_JumpToOperation(t *testing.T) {
 	// This is more robust than assuming specific sequence numbers, as fixture
 	// creation may or may not record an operation depending on implementation
 	var targetOperationID string
+	var targetSequence int
 	var lookCreateCount int
 	for _, op := range historyResp.OperationHistory.Operations {
 		// Look for Look creation operations by description pattern
@@ -922,6 +923,7 @@ func TestUndoRedo_JumpToOperation(t *testing.T) {
 			lookCreateCount++
 			if lookCreateCount == 2 { // Second look creation = "Look 2"
 				targetOperationID = op.ID
+				targetSequence = op.Sequence
 				break
 			}
 		}
@@ -934,12 +936,14 @@ func TestUndoRedo_JumpToOperation(t *testing.T) {
 			// Find an operation in the middle (not first or current)
 			if op.Sequence > 1 && !op.IsCurrent {
 				targetOperationID = op.ID
+				targetSequence = op.Sequence
 				break
 			}
 		}
 	}
 
 	require.NotEmpty(t, targetOperationID, "Should find a target operation for jump test")
+	require.Greater(t, targetSequence, 0, "Target sequence should be positive")
 
 	// Jump to that operation
 	t.Run("JumpToOperation", func(t *testing.T) {
@@ -1002,7 +1006,8 @@ func TestUndoRedo_JumpToOperation(t *testing.T) {
 		`, map[string]interface{}{"projectId": projectID}, &statusResp)
 
 		require.NoError(t, err)
-		assert.Equal(t, 3, statusResp.UndoRedoStatus.CurrentSequence)
+		// Use the dynamically determined target sequence instead of hardcoded value
+		assert.Equal(t, targetSequence, statusResp.UndoRedoStatus.CurrentSequence, "Current sequence should match target operation's sequence")
 		assert.True(t, statusResp.UndoRedoStatus.CanRedo, "Should be able to redo")
 	})
 }
@@ -1155,6 +1160,358 @@ func TestUndoRedo_CrossProjectIsolation(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.True(t, statusResp.UndoRedoStatus.CanUndo, "Project B should still be able to undo")
+	})
+}
+
+// TestUndoRedo_FixtureInstanceCreate tests undo/redo for fixture instance creation.
+// Create a fixture instance, undo (should delete), redo (should recreate).
+func TestUndoRedo_FixtureInstanceCreate(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	// Create project
+	projectID := createTestProject(t, client, ctx, "Undo Fixture Create Test")
+	defer deleteTestProject(client, ctx, projectID)
+
+	// Get fixture definition
+	definitionID := getOrCreateFixtureDefinition(t, client, ctx)
+
+	// Create fixture instance
+	var createResp struct {
+		CreateFixtureInstance struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"createFixtureInstance"`
+	}
+
+	err := client.Mutate(ctx, `
+		mutation CreateFixtureInstance($input: CreateFixtureInstanceInput!) {
+			createFixtureInstance(input: $input) { id name }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"projectId":    projectID,
+			"definitionId": definitionID,
+			"name":         "Undo Test Fixture",
+			"universe":     1,
+			"startChannel": 1,
+		},
+	}, &createResp)
+
+	require.NoError(t, err)
+	fixtureID := createResp.CreateFixtureInstance.ID
+	assert.Equal(t, "Undo Test Fixture", createResp.CreateFixtureInstance.Name)
+
+	// Verify fixture exists
+	t.Run("FixtureExistsBeforeUndo", func(t *testing.T) {
+		var fixtureResp struct {
+			FixtureInstance struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"fixtureInstance"`
+		}
+
+		err := client.Query(ctx, `
+			query GetFixtureInstance($id: ID!) {
+				fixtureInstance(id: $id) { id name }
+			}
+		`, map[string]interface{}{"id": fixtureID}, &fixtureResp)
+
+		require.NoError(t, err)
+		assert.Equal(t, "Undo Test Fixture", fixtureResp.FixtureInstance.Name)
+	})
+
+	// Check undo status
+	t.Run("UndoStatusAfterCreate", func(t *testing.T) {
+		var statusResp struct {
+			UndoRedoStatus struct {
+				CanUndo         bool    `json:"canUndo"`
+				CanRedo         bool    `json:"canRedo"`
+				TotalOperations int     `json:"totalOperations"`
+				UndoDescription *string `json:"undoDescription"`
+			} `json:"undoRedoStatus"`
+		}
+
+		err := client.Query(ctx, `
+			query GetUndoRedoStatus($projectId: ID!) {
+				undoRedoStatus(projectId: $projectId) {
+					canUndo
+					canRedo
+					totalOperations
+					undoDescription
+				}
+			}
+		`, map[string]interface{}{"projectId": projectID}, &statusResp)
+
+		require.NoError(t, err)
+		assert.True(t, statusResp.UndoRedoStatus.CanUndo, "Should be able to undo after create")
+		assert.False(t, statusResp.UndoRedoStatus.CanRedo, "Should not be able to redo initially")
+		assert.Greater(t, statusResp.UndoRedoStatus.TotalOperations, 0)
+	})
+
+	// Undo the create operation
+	t.Run("UndoCreateFixture", func(t *testing.T) {
+		var undoResp struct {
+			Undo struct {
+				Success   bool    `json:"success"`
+				Message   *string `json:"message"`
+				Operation *struct {
+					OperationType string `json:"operationType"`
+					EntityType    string `json:"entityType"`
+				} `json:"operation"`
+			} `json:"undo"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation Undo($projectId: ID!) {
+				undo(projectId: $projectId) {
+					success
+					message
+					operation {
+						operationType
+						entityType
+					}
+				}
+			}
+		`, map[string]interface{}{"projectId": projectID}, &undoResp)
+
+		require.NoError(t, err)
+		assert.True(t, undoResp.Undo.Success, "Undo should succeed")
+	})
+
+	// Verify fixture no longer exists (deleted by undo)
+	t.Run("FixtureDeletedAfterUndo", func(t *testing.T) {
+		var fixtureResp struct {
+			FixtureInstance *struct {
+				ID string `json:"id"`
+			} `json:"fixtureInstance"`
+		}
+
+		err := client.Query(ctx, `
+			query GetFixtureInstance($id: ID!) {
+				fixtureInstance(id: $id) { id }
+			}
+		`, map[string]interface{}{"id": fixtureID}, &fixtureResp)
+
+		// The fixture should not be found (expect error or nil response)
+		if err == nil {
+			assert.Nil(t, fixtureResp.FixtureInstance, "Fixture should be nil after undo")
+		}
+	})
+
+	// Check undo status - should be able to redo
+	t.Run("UndoStatusAfterUndo", func(t *testing.T) {
+		var statusResp struct {
+			UndoRedoStatus struct {
+				CanUndo bool `json:"canUndo"`
+				CanRedo bool `json:"canRedo"`
+			} `json:"undoRedoStatus"`
+		}
+
+		err := client.Query(ctx, `
+			query GetUndoRedoStatus($projectId: ID!) {
+				undoRedoStatus(projectId: $projectId) {
+					canUndo
+					canRedo
+				}
+			}
+		`, map[string]interface{}{"projectId": projectID}, &statusResp)
+
+		require.NoError(t, err)
+		assert.True(t, statusResp.UndoRedoStatus.CanRedo, "Should be able to redo after undo")
+	})
+
+	// Redo the create operation
+	t.Run("RedoCreateFixture", func(t *testing.T) {
+		var redoResp struct {
+			Redo struct {
+				Success          bool    `json:"success"`
+				Message          *string `json:"message"`
+				RestoredEntityId *string `json:"restoredEntityId"`
+			} `json:"redo"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation Redo($projectId: ID!) {
+				redo(projectId: $projectId) {
+					success
+					message
+					restoredEntityId
+				}
+			}
+		`, map[string]interface{}{"projectId": projectID}, &redoResp)
+
+		require.NoError(t, err)
+		if !redoResp.Redo.Success && redoResp.Redo.Message != nil {
+			t.Logf("Redo failed with message: %s", *redoResp.Redo.Message)
+		}
+		assert.True(t, redoResp.Redo.Success, "Redo should succeed")
+	})
+
+	// Verify fixture exists again after redo
+	t.Run("FixtureRestoredAfterRedo", func(t *testing.T) {
+		// Query fixtures by project to find the restored fixture
+		var fixturesResp struct {
+			FixtureInstances struct {
+				FixtureInstances []struct {
+					ID   string `json:"id"`
+					Name string `json:"name"`
+				} `json:"fixtureInstances"`
+			} `json:"fixtureInstances"`
+		}
+
+		err := client.Query(ctx, `
+			query ListFixtureInstances($projectId: ID!) {
+				fixtureInstances(projectId: $projectId) {
+					fixtureInstances { id name }
+				}
+			}
+		`, map[string]interface{}{"projectId": projectID}, &fixturesResp)
+
+		require.NoError(t, err)
+		require.Len(t, fixturesResp.FixtureInstances.FixtureInstances, 1, "Should have one fixture after redo")
+		assert.Equal(t, "Undo Test Fixture", fixturesResp.FixtureInstances.FixtureInstances[0].Name)
+	})
+}
+
+// TestUndoRedo_FixtureInstanceUpdate tests undo/redo for fixture instance updates.
+// Create fixture, update it, undo (should restore original), redo (should re-apply update).
+func TestUndoRedo_FixtureInstanceUpdate(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	// Create project
+	projectID := createTestProject(t, client, ctx, "Undo Fixture Update Test")
+	defer deleteTestProject(client, ctx, projectID)
+
+	// Get fixture definition
+	definitionID := getOrCreateFixtureDefinition(t, client, ctx)
+
+	// Create fixture instance
+	var createResp struct {
+		CreateFixtureInstance struct {
+			ID string `json:"id"`
+		} `json:"createFixtureInstance"`
+	}
+
+	err := client.Mutate(ctx, `
+		mutation CreateFixtureInstance($input: CreateFixtureInstanceInput!) {
+			createFixtureInstance(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"projectId":    projectID,
+			"definitionId": definitionID,
+			"name":         "Original Fixture Name",
+			"universe":     1,
+			"startChannel": 1,
+		},
+	}, &createResp)
+
+	require.NoError(t, err)
+	fixtureID := createResp.CreateFixtureInstance.ID
+
+	// Update the fixture
+	t.Run("UpdateFixture", func(t *testing.T) {
+		var updateResp struct {
+			UpdateFixtureInstance struct {
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"updateFixtureInstance"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation UpdateFixtureInstance($id: ID!, $input: UpdateFixtureInstanceInput!) {
+				updateFixtureInstance(id: $id, input: $input) {
+					id
+					name
+				}
+			}
+		`, map[string]interface{}{
+			"id": fixtureID,
+			"input": map[string]interface{}{
+				"name": "Updated Fixture Name",
+			},
+		}, &updateResp)
+
+		require.NoError(t, err)
+		assert.Equal(t, "Updated Fixture Name", updateResp.UpdateFixtureInstance.Name)
+	})
+
+	// Undo the update
+	t.Run("UndoUpdate", func(t *testing.T) {
+		var undoResp struct {
+			Undo struct {
+				Success bool `json:"success"`
+			} `json:"undo"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation Undo($projectId: ID!) {
+				undo(projectId: $projectId) { success }
+			}
+		`, map[string]interface{}{"projectId": projectID}, &undoResp)
+
+		require.NoError(t, err)
+		assert.True(t, undoResp.Undo.Success)
+	})
+
+	// Verify original name restored
+	t.Run("OriginalNameRestored", func(t *testing.T) {
+		var fixtureResp struct {
+			FixtureInstance struct {
+				Name string `json:"name"`
+			} `json:"fixtureInstance"`
+		}
+
+		err := client.Query(ctx, `
+			query GetFixtureInstance($id: ID!) {
+				fixtureInstance(id: $id) { name }
+			}
+		`, map[string]interface{}{"id": fixtureID}, &fixtureResp)
+
+		require.NoError(t, err)
+		assert.Equal(t, "Original Fixture Name", fixtureResp.FixtureInstance.Name, "Name should be restored to original")
+	})
+
+	// Redo the update
+	t.Run("RedoUpdate", func(t *testing.T) {
+		var redoResp struct {
+			Redo struct {
+				Success bool `json:"success"`
+			} `json:"redo"`
+		}
+
+		err := client.Mutate(ctx, `
+			mutation Redo($projectId: ID!) {
+				redo(projectId: $projectId) { success }
+			}
+		`, map[string]interface{}{"projectId": projectID}, &redoResp)
+
+		require.NoError(t, err)
+		assert.True(t, redoResp.Redo.Success)
+	})
+
+	// Verify updated name re-applied
+	t.Run("UpdatedNameReapplied", func(t *testing.T) {
+		var fixtureResp struct {
+			FixtureInstance struct {
+				Name string `json:"name"`
+			} `json:"fixtureInstance"`
+		}
+
+		err := client.Query(ctx, `
+			query GetFixtureInstance($id: ID!) {
+				fixtureInstance(id: $id) { name }
+			}
+		`, map[string]interface{}{"id": fixtureID}, &fixtureResp)
+
+		require.NoError(t, err)
+		assert.Equal(t, "Updated Fixture Name", fixtureResp.FixtureInstance.Name, "Name should be updated after redo")
 	})
 }
 
