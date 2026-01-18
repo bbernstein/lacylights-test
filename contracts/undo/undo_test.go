@@ -3,6 +3,7 @@ package undo
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -536,7 +537,7 @@ func TestUndoRedo_MultipleOperations(t *testing.T) {
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"projectId": projectID,
-				"name":      "Look " + string(rune('A'+i)),
+				"name":      fmt.Sprintf("Look %c", 'A'+i),
 				"fixtureValues": []map[string]interface{}{
 					{
 						"fixtureId": fixtureID,
@@ -866,7 +867,7 @@ func TestUndoRedo_JumpToOperation(t *testing.T) {
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
 				"projectId": projectID,
-				"name":      "Look " + string(rune('1'+i)),
+				"name":      fmt.Sprintf("Look %d", i+1),
 				"fixtureValues": []map[string]interface{}{
 					{
 						"fixtureId": fixtureID,
