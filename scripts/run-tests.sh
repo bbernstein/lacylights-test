@@ -26,7 +26,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Test options (parallel arrays instead of associative arrays for compatibility)
-TEST_KEYS=(all ci contracts dmx fade effects preview settings integration distribution load e2e e2e-ui e2e-headed)
+TEST_KEYS=(all ci contracts dmx fade effects preview settings integration distribution load undo e2e e2e-ui e2e-headed)
 TEST_DESCRIPTIONS=(
   "Run all contract tests (requires Art-Net)"
   "Run CI-safe tests (no Art-Net required)"
@@ -39,11 +39,12 @@ TEST_DESCRIPTIONS=(
   "Run integration tests"
   "Run S3 distribution tests"
   "Run 4-universe load tests"
+  "Run undo tests"
   "Run E2E tests (Playwright)"
   "Run E2E tests with Playwright UI"
   "Run E2E tests in headed browser"
 )
-MAKE_TARGETS=(test test-ci test-contracts test-dmx test-fade test-effects test-preview test-settings test-integration test-distribution test-load e2e e2e-ui e2e-headed)
+MAKE_TARGETS=(test test-ci test-contracts test-dmx test-fade test-effects test-preview test-settings test-integration test-distribution test-load test-undo e2e e2e-ui e2e-headed)
 
 # Tests that require frontend
 FRONTEND_REQUIRED_TESTS="e2e e2e-ui e2e-headed"
@@ -73,12 +74,12 @@ show_usage() {
   echo "Available test types:"
   echo ""
   echo -e "${CYAN}Contract & Integration Tests:${NC}"
-  for i in 0 1 2 3 4 5 6 7 8 9 10; do
+  for i in 0 1 2 3 4 5 6 7 8 9 10 11; do
     printf "  ${GREEN}%-15s${NC} %s\n" "${TEST_KEYS[$i]}" "${TEST_DESCRIPTIONS[$i]}"
   done
   echo ""
   echo -e "${CYAN}E2E Tests (require frontend):${NC}"
-  for i in 11 12 13; do
+  for i in 12 13 14; do
     printf "  ${GREEN}%-15s${NC} %s\n" "${TEST_KEYS[$i]}" "${TEST_DESCRIPTIONS[$i]}"
   done
   echo ""
@@ -97,12 +98,12 @@ select_test() {
   echo ""
 
   echo -e "${CYAN}Contract & Integration Tests:${NC}"
-  for i in 0 1 2 3 4 5 6 7 8 9 10; do
+  for i in 0 1 2 3 4 5 6 7 8 9 10 11; do
     printf "  ${GREEN}%2d)${NC} %-15s %s\n" "$((i+1))" "${TEST_KEYS[$i]}" "${TEST_DESCRIPTIONS[$i]}"
   done
   echo ""
   echo -e "${CYAN}E2E Tests (require frontend):${NC}"
-  for i in 11 12 13; do
+  for i in 12 13 14; do
     printf "  ${GREEN}%2d)${NC} %-15s %s\n" "$((i+1))" "${TEST_KEYS[$i]}" "${TEST_DESCRIPTIONS[$i]}"
   done
   echo ""
