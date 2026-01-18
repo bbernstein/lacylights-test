@@ -3,6 +3,7 @@ package undo
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// contains is a helper function to check if a string contains a substring (case-insensitive).
+func contains(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
 
 // getOrCreateFixtureDefinition ensures we have a fixture definition to use.
 func getOrCreateFixtureDefinition(t *testing.T, client *graphql.Client, ctx context.Context) string {
@@ -905,18 +911,35 @@ func TestUndoRedo_JumpToOperation(t *testing.T) {
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, len(historyResp.OperationHistory.Operations), 4, "Should have at least 4 operations")
 
-	// Find operation with sequence 3 (after creating Fixture, Look 1, and Look 2)
-	// We want to jump to after creating Look 2, which would give us 2 looks
-	// Note: Sequence 1 = Fixture, Sequence 2 = Look 1, Sequence 3 = Look 2
+	// Find the operation that created "Look 2" (the second Look operation)
+	// This is more robust than assuming specific sequence numbers, as fixture
+	// creation may or may not record an operation depending on implementation
 	var targetOperationID string
+	var lookCreateCount int
 	for _, op := range historyResp.OperationHistory.Operations {
-		if op.Sequence == 3 {
-			targetOperationID = op.ID
-			break
+		// Look for Look creation operations by description pattern
+		if contains(op.Description, "Look") && contains(op.Description, "Create") {
+			lookCreateCount++
+			if lookCreateCount == 2 { // Second look creation = "Look 2"
+				targetOperationID = op.ID
+				break
+			}
 		}
 	}
 
-	require.NotEmpty(t, targetOperationID, "Should find operation with sequence 3")
+	// Fallback: if we can't find by description, use the third operation
+	// (which should be after fixture + 2 looks in the expected flow)
+	if targetOperationID == "" {
+		for _, op := range historyResp.OperationHistory.Operations {
+			// Find an operation in the middle (not first or current)
+			if op.Sequence > 1 && !op.IsCurrent {
+				targetOperationID = op.ID
+				break
+			}
+		}
+	}
+
+	require.NotEmpty(t, targetOperationID, "Should find a target operation for jump test")
 
 	// Jump to that operation
 	t.Run("JumpToOperation", func(t *testing.T) {
@@ -956,7 +979,8 @@ func TestUndoRedo_JumpToOperation(t *testing.T) {
 		`, map[string]interface{}{"projectId": projectID}, &looksResp)
 
 		require.NoError(t, err)
-		assert.Len(t, looksResp.Looks.Looks, 2, "Should have 2 looks after jumping to sequence 3 (fixture, look1, look2)")
+		// After jumping to the second look creation operation, we should have exactly 2 looks
+		assert.Len(t, looksResp.Looks.Looks, 2, "Should have 2 looks after jumping to Look 2 creation operation")
 	})
 
 	// Verify current sequence is updated
