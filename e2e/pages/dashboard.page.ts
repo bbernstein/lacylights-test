@@ -74,6 +74,8 @@ export class DashboardPage extends BasePage {
   ): Promise<number> {
     const cardLocator = this.getCardLocator(card);
     // The count is displayed as a large bold number (text-3xl font-bold)
+    // NOTE: This CSS class selector is coupled to Tailwind CSS implementation.
+    // TODO: Consider adding data-testid="card-count" in frontend for more robust testing.
     const countText = await cardLocator
       .locator(".text-3xl.font-bold")
       .textContent();
@@ -162,6 +164,8 @@ export class DashboardPage extends BasePage {
 
     for (let i = 0; i < count; i++) {
       const text = await listItems.nth(i).textContent();
+      // Filter out overflow indicator text. This is fragile if the text changes.
+      // TODO: Consider adding data-testid to list items in frontend for more robust selectors.
       if (text && !text.includes("more...")) {
         items.push(text.trim());
       }
@@ -204,11 +208,17 @@ export class DashboardPage extends BasePage {
   /**
    * Check if the Effects card shows the correct effect type indicator.
    * Effects have colored dots: purple (WAVEFORM), blue (CROSSFADE), yellow (MASTER), gray (STATIC).
+   *
+   * NOTE: This color-to-effect-type mapping is derived from the frontend implementation.
+   * If the effect type colors change in the UI, update this mapping and the related tests.
+   * TODO: Consider using data-effect-type attributes in frontend for more robust testing.
    */
   async hasEffectTypeIndicator(
     effectName: string,
     expectedColor: "purple" | "blue" | "yellow" | "gray"
   ): Promise<boolean> {
+    // NOTE: These CSS classes are tightly coupled to Tailwind CSS implementation.
+    // If the frontend changes color shades, these will need to be updated.
     const colorClasses: Record<string, string> = {
       purple: "bg-purple-500",
       blue: "bg-blue-500",

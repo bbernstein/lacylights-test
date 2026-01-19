@@ -11,7 +11,11 @@ import { EffectsPage } from "../pages/effects.page";
  * - All dashboard cards are displayed (Fixtures, Looks, Effects, Look Boards, Cue Lists, Settings)
  * - Cards show correct counts and item lists
  * - Navigation links work correctly
- * - Effects card specifically shows effects with type indicators
+ * - Effects card shows effects with type indicators (tests WAVEFORM/purple type)
+ *
+ * NOTE: Only WAVEFORM effect type is tested. Additional effect types (CROSSFADE/blue,
+ * MASTER/yellow, STATIC/gray) could be added for more comprehensive coverage but would
+ * increase test execution time significantly.
  *
  * Tests run in serial mode to maintain state between tests.
  */
@@ -19,6 +23,8 @@ test.describe("Dashboard", () => {
   test.describe.configure({ mode: "serial" });
 
   // In CI, set up a fallback proxy in case any code still references port 4000.
+  // TODO: Extract this proxy logic to a shared test fixture to reduce duplication
+  // across test files (also used in happy-path.spec.ts).
   test.beforeEach(async ({ page }) => {
     if (process.env.CI) {
       await page.route("**/localhost:4000/**", async (route) => {
