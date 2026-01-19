@@ -98,6 +98,7 @@ export class DashboardPage extends BasePage {
     // TODO: Consider adding data-testid="card-count" in frontend for more robust testing.
     const countText = await cardLocator
       .locator(".text-3xl.font-bold")
+      .first()
       .textContent();
     return parseInt(countText || "0", 10);
   }
@@ -245,17 +246,19 @@ export class DashboardPage extends BasePage {
       gray: "bg-gray-400",
     };
 
-    const items = this.effectsCard.locator("ul li");
-    const count = await items.count();
+    // Narrow down to list items that contain the given effect name to avoid
+    // iterating through all items when there is no match.
+    const matchingItems = this.effectsCard
+      .locator("ul li")
+      .filter({ hasText: effectName });
 
-    for (let i = 0; i < count; i++) {
-      const itemText = await items.nth(i).textContent();
-      if (itemText?.includes(effectName)) {
-        const indicator = items.nth(i).locator("span.rounded-full");
-        const classes = await indicator.getAttribute("class");
-        return classes?.includes(colorClasses[expectedColor]) || false;
-      }
+    const matchCount = await matchingItems.count();
+    if (matchCount === 0) {
+      return false;
     }
-    return false;
+
+    const indicator = matchingItems.first().locator("span.rounded-full");
+    const classes = await indicator.getAttribute("class");
+    return classes?.includes(colorClasses[expectedColor]) || false;
   }
 }
