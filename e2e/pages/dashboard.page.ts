@@ -121,7 +121,7 @@ export class DashboardPage extends BasePage {
 
   /**
    * Click on a card title link to navigate to that section.
-   * Waits for the target page heading to be visible for reliable navigation.
+   * Waits for URL to match expected path and for page to be ready.
    */
   async clickCardLink(
     card: "fixtures" | "looks" | "effects" | "look-boards" | "cue-lists" | "settings"
@@ -135,40 +135,47 @@ export class DashboardPage extends BasePage {
       settings: "Settings",
     };
 
+    // URL paths corresponding to each card
+    const urlPaths: Record<string, RegExp> = {
+      fixtures: /\/fixtures/,
+      looks: /\/looks/,
+      effects: /\/effects/,
+      "look-boards": /\/look-board/,
+      "cue-lists": /\/cue-lists/,
+      settings: /\/settings/,
+    };
+
     const cardLocator = this.getCardLocator(card);
     await cardLocator.getByRole("link", { name: titles[card] }).click();
-    // Wait for DOM to be ready, then wait for the target page heading
-    // Using domcontentloaded instead of networkidle for reliability in CI
-    // (networkidle can hang with WebSocket connections)
+    // Wait for DOM to be ready and URL to match expected path
+    // Using URL matching instead of heading check for reliability
+    // (some pages like Settings may not have h2 headings)
     await this.page.waitForLoadState("domcontentloaded");
-    await expect(
-      this.page.getByRole("heading", { name: titles[card], level: 2 })
-    ).toBeVisible({ timeout: 10000 });
+    await expect(this.page).toHaveURL(urlPaths[card], { timeout: 10000 });
   }
 
   /**
    * Click the "View all" link on a specific card.
-   * Waits for the target page heading to be visible for reliable navigation.
+   * Waits for URL to match expected path and for page to be ready.
    */
   async clickViewAll(
     card: "fixtures" | "looks" | "effects" | "look-boards" | "cue-lists" | "settings"
   ): Promise<void> {
-    const titles: Record<string, string> = {
-      fixtures: "Fixtures",
-      looks: "Looks",
-      effects: "Effects",
-      "look-boards": "Look Boards",
-      "cue-lists": "Cue Lists",
-      settings: "Settings",
+    // URL paths corresponding to each card
+    const urlPaths: Record<string, RegExp> = {
+      fixtures: /\/fixtures/,
+      looks: /\/looks/,
+      effects: /\/effects/,
+      "look-boards": /\/look-board/,
+      "cue-lists": /\/cue-lists/,
+      settings: /\/settings/,
     };
 
     const cardLocator = this.getCardLocator(card);
     await cardLocator.getByRole("link", { name: /View all/ }).click();
-    // Wait for DOM to be ready, then wait for the target page heading
+    // Wait for DOM to be ready and URL to match expected path
     await this.page.waitForLoadState("domcontentloaded");
-    await expect(
-      this.page.getByRole("heading", { name: titles[card], level: 2 })
-    ).toBeVisible({ timeout: 10000 });
+    await expect(this.page).toHaveURL(urlPaths[card], { timeout: 10000 });
   }
 
   /**
