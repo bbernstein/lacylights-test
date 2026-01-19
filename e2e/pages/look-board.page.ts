@@ -18,8 +18,10 @@ export class LookBoardListPage extends BasePage {
    * Create a new look board.
    */
   async createBoard(name: string, description?: string): Promise<void> {
-    // Look for create/new board button
-    await this.clickButton(/create|new.*board/i);
+    // Use exact match to avoid matching Undo button that may contain "Create" in its title
+    await this.page
+      .getByRole("button", { name: "New Look Board", exact: true })
+      .click();
 
     // Wait for modal - it shows "Create Look Board" heading
     const modalHeading = this.page.getByText("Create Look Board");

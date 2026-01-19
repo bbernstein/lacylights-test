@@ -47,11 +47,13 @@ export class FixturesPage extends BasePage {
       await manufacturerInput.fill(options.manufacturer);
 
       // Wait for dropdown to show options and click the matching button
-      await this.page.waitForTimeout(500);
+      // Use expect with timeout for more reliable waiting
       const manufacturerOption = this.page
         .locator("button")
-        .filter({ hasText: new RegExp(`^${options.manufacturer}$`, "i") });
-      await manufacturerOption.first().click();
+        .filter({ hasText: new RegExp(`^${options.manufacturer}$`, "i") })
+        .first();
+      await expect(manufacturerOption).toBeVisible({ timeout: 5000 });
+      await manufacturerOption.click();
 
       // Wait for models to load after manufacturer selection
       await this.page.waitForTimeout(500);
@@ -64,11 +66,13 @@ export class FixturesPage extends BasePage {
       await modelInput.fill(options.model);
 
       // Wait for dropdown and click the matching button
-      await this.page.waitForTimeout(500);
+      // Use expect with timeout for more reliable waiting
       const modelOption = this.page
         .locator("button")
-        .filter({ hasText: new RegExp(`^${options.model}$`, "i") });
-      await modelOption.first().click();
+        .filter({ hasText: new RegExp(`^${options.model}$`, "i") })
+        .first();
+      await expect(modelOption).toBeVisible({ timeout: 5000 });
+      await modelOption.click();
 
       // Wait for mode dropdown to appear after model selection
       await this.page.waitForTimeout(500);
@@ -76,8 +80,10 @@ export class FixturesPage extends BasePage {
 
     // Select mode if specified, or select the first available mode
     // The mode dropdown has id="mode" in the AddFixtureModal
+    // Wait for mode select to become visible after model selection
     const modeSelect = this.page.locator("select#mode");
-    if (await modeSelect.isVisible()) {
+    try {
+      await expect(modeSelect).toBeVisible({ timeout: 5000 });
       if (options.mode) {
         await modeSelect.selectOption({ label: new RegExp(options.mode, "i") });
       } else {
@@ -88,6 +94,8 @@ export class FixturesPage extends BasePage {
           await modeSelect.selectOption({ label: firstMode });
         }
       }
+    } catch {
+      // Mode select may not be visible for some fixture types - continue without selecting
     }
 
     if (options.universe !== undefined) {
