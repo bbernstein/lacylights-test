@@ -85,7 +85,7 @@ export class FixturesPage extends BasePage {
     try {
       await expect(modeSelect).toBeVisible({ timeout: 5000 });
       if (options.mode) {
-        await modeSelect.selectOption({ label: new RegExp(options.mode, "i") });
+        await modeSelect.selectOption({ label: options.mode });
       } else {
         // Select the first non-empty option
         const optionValues = await modeSelect.locator("option").allTextContents();

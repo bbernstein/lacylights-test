@@ -248,7 +248,6 @@ test.describe("LacyLights Happy Path", () => {
       name: testData.effect.name,
       type: testData.effect.type,
       waveform: testData.effect.waveform,
-      frequency: testData.effect.frequency,
     });
 
     expect(await effectsPage.hasEffect(testData.effect.name)).toBe(true);
