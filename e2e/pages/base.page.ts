@@ -77,9 +77,10 @@ export class BasePage {
   /**
    * Wait for the page heading to appear.
    * Uses a 10s timeout for CI reliability where page loads may be slower.
+   * Accepts any heading level since pages may use h1 or h2.
    */
   async waitForHeading(text: string): Promise<void> {
-    await expect(this.page.getByRole("heading", { name: text, level: 2 })).toBeVisible({
+    await expect(this.page.getByRole("heading", { name: text })).toBeVisible({
       timeout: 10000,
     });
   }
