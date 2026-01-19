@@ -18,7 +18,8 @@ export class FixturesPage extends BasePage {
    * Click the "Add Fixture" button to open the add modal.
    */
   async openAddFixtureModal(): Promise<void> {
-    await this.clickButton("Add Fixture");
+    // Use exact match to avoid matching Undo button that may contain "Add Fixture" in its title
+    await this.page.getByRole("button", { name: "Add Fixture", exact: true }).click();
     // Wait for modal to appear
     await expect(this.page.getByRole("dialog")).toBeVisible();
   }

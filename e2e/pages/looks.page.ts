@@ -18,7 +18,8 @@ export class LooksPage extends BasePage {
    * Click "Create Look" button to open the modal.
    */
   async openCreateLookModal(): Promise<void> {
-    await this.clickButton("Create Look");
+    // Use exact match to avoid matching Undo button that may contain "Create look" in its title
+    await this.page.getByRole("button", { name: "Create Look", exact: true }).click();
     await expect(this.page.getByRole("dialog")).toBeVisible();
   }
 
@@ -34,8 +35,9 @@ export class LooksPage extends BasePage {
       await this.page.getByLabel(/description/i).fill(description);
     }
 
-    // Submit
-    await this.page.getByRole("button", { name: /create/i }).last().click();
+    // Submit - scope to the dialog to avoid matching Undo button
+    const dialog = this.page.getByRole("dialog");
+    await dialog.getByRole("button", { name: /create/i }).click();
 
     // Wait for modal to close
     await expect(this.page.getByRole("dialog")).toBeHidden({ timeout: 10000 });
