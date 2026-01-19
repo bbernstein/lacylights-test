@@ -15,6 +15,26 @@ export class DashboardPage extends BasePage {
   readonly cueListsCard: Locator;
   readonly settingsCard: Locator;
 
+  // Card titles used for navigation links
+  private readonly cardTitles: Record<string, string> = {
+    fixtures: "Fixtures",
+    looks: "Looks",
+    effects: "Effects",
+    "look-boards": "Look Boards",
+    "cue-lists": "Cue Lists",
+    settings: "Settings",
+  };
+
+  // URL paths corresponding to each card
+  private readonly cardUrlPaths: Record<string, RegExp> = {
+    fixtures: /\/fixtures/,
+    looks: /\/looks/,
+    effects: /\/effects/,
+    "look-boards": /\/look-board/,
+    "cue-lists": /\/cue-lists/,
+    settings: /\/settings/,
+  };
+
   constructor(page: Page) {
     super(page);
     this.fixturesCard = page.getByTestId("fixtures-card");
@@ -126,32 +146,13 @@ export class DashboardPage extends BasePage {
   async clickCardLink(
     card: "fixtures" | "looks" | "effects" | "look-boards" | "cue-lists" | "settings"
   ): Promise<void> {
-    const titles: Record<string, string> = {
-      fixtures: "Fixtures",
-      looks: "Looks",
-      effects: "Effects",
-      "look-boards": "Look Boards",
-      "cue-lists": "Cue Lists",
-      settings: "Settings",
-    };
-
-    // URL paths corresponding to each card
-    const urlPaths: Record<string, RegExp> = {
-      fixtures: /\/fixtures/,
-      looks: /\/looks/,
-      effects: /\/effects/,
-      "look-boards": /\/look-board/,
-      "cue-lists": /\/cue-lists/,
-      settings: /\/settings/,
-    };
-
     const cardLocator = this.getCardLocator(card);
-    await cardLocator.getByRole("link", { name: titles[card] }).click();
+    await cardLocator.getByRole("link", { name: this.cardTitles[card] }).click();
     // Wait for DOM to be ready and URL to match expected path
     // Using URL matching instead of heading check for reliability
     // (some pages like Settings may not have h2 headings)
     await this.page.waitForLoadState("domcontentloaded");
-    await expect(this.page).toHaveURL(urlPaths[card], { timeout: 10000 });
+    await expect(this.page).toHaveURL(this.cardUrlPaths[card], { timeout: 10000 });
   }
 
   /**
@@ -161,21 +162,11 @@ export class DashboardPage extends BasePage {
   async clickViewAll(
     card: "fixtures" | "looks" | "effects" | "look-boards" | "cue-lists" | "settings"
   ): Promise<void> {
-    // URL paths corresponding to each card
-    const urlPaths: Record<string, RegExp> = {
-      fixtures: /\/fixtures/,
-      looks: /\/looks/,
-      effects: /\/effects/,
-      "look-boards": /\/look-board/,
-      "cue-lists": /\/cue-lists/,
-      settings: /\/settings/,
-    };
-
     const cardLocator = this.getCardLocator(card);
     await cardLocator.getByRole("link", { name: /View all/ }).click();
     // Wait for DOM to be ready and URL to match expected path
     await this.page.waitForLoadState("domcontentloaded");
-    await expect(this.page).toHaveURL(urlPaths[card], { timeout: 10000 });
+    await expect(this.page).toHaveURL(this.cardUrlPaths[card], { timeout: 10000 });
   }
 
   /**

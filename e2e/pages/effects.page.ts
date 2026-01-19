@@ -25,7 +25,9 @@ export class EffectsPage extends BasePage {
     amplitude?: number;
   }): Promise<void> {
     // Use exact match to avoid matching Undo button that may contain "Create" in its description
-    await this.clickButton("Create Effect");
+    await this.page
+      .getByRole("button", { name: "Create Effect", exact: true })
+      .click();
     await expect(this.page.getByRole("dialog")).toBeVisible();
 
     await this.page.getByLabel(/effect name/i).fill(options.name);

@@ -220,6 +220,7 @@ test.describe("Dashboard", () => {
   test.afterAll(async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
+    await setupCiProxy(page);
 
     try {
       // Delete test fixture - use try/catch for resilience
