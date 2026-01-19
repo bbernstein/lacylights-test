@@ -57,21 +57,24 @@ test.describe("Dashboard", () => {
     }
   });
 
+  // Use timestamp suffix to make test data unique across runs
+  const testSuffix = Date.now().toString().slice(-6);
+
   // Test data for creating entities
   const testData = {
     fixture: {
-      name: "Dashboard Test Fixture",
+      name: `Dashboard Test Fixture ${testSuffix}`,
       manufacturer: "Generic",
       model: "RGB Fader",
       universe: 1,
       startChannel: 100,
     },
     look: {
-      name: "Dashboard Test Look",
+      name: `Dashboard Test Look ${testSuffix}`,
       description: "A look created for dashboard testing",
     },
     effect: {
-      name: "Dashboard Test Effect",
+      name: `Dashboard Test Effect ${testSuffix}`,
       type: "Waveform (LFO)" as const,
       waveform: "Sine" as const,
     },
@@ -238,29 +241,38 @@ test.describe("Dashboard", () => {
     await dashboardPage.clickCardLink("settings");
     await expect(page).toHaveURL(/\/settings/);
   });
-});
 
-/**
- * Cleanup test - runs last to clean up test data.
- */
-test.describe("Dashboard Cleanup", () => {
-  test.skip("Delete test data", async ({ page }) => {
-    // This test is skipped by default
-    // Enable it if you want to clean up after running the dashboard tests
+  // Cleanup: Delete test data after all tests complete
+  // Using afterAll ensures cleanup runs even if individual tests are skipped
+  // Test data uses unique timestamps so cleanup is not strictly necessary,
+  // but this prevents accumulation of test data in development environments
+  test.afterAll(async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
-    // Delete test fixture
-    const fixturesPage = new FixturesPage(page);
-    await fixturesPage.goto();
-    await fixturesPage.deleteFixture("Dashboard Test Fixture");
+    try {
+      // Delete test fixture
+      const fixturesPage = new FixturesPage(page);
+      await fixturesPage.goto();
+      if (await fixturesPage.hasFixture(testData.fixture.name)) {
+        await fixturesPage.deleteFixture(testData.fixture.name);
+      }
 
-    // Delete test look
-    const looksPage = new LooksPage(page);
-    await looksPage.goto();
-    await looksPage.deleteLook("Dashboard Test Look");
+      // Delete test look
+      const looksPage = new LooksPage(page);
+      await looksPage.goto();
+      if (await looksPage.hasLook(testData.look.name)) {
+        await looksPage.deleteLook(testData.look.name);
+      }
 
-    // Delete test effect
-    const effectsPage = new EffectsPage(page);
-    await effectsPage.goto();
-    await effectsPage.deleteEffect("Dashboard Test Effect");
+      // Delete test effect
+      const effectsPage = new EffectsPage(page);
+      await effectsPage.goto();
+      if (await effectsPage.hasEffect(testData.effect.name)) {
+        await effectsPage.deleteEffect(testData.effect.name);
+      }
+    } finally {
+      await context.close();
+    }
   });
 });
