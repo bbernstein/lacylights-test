@@ -222,25 +222,37 @@ test.describe("Dashboard", () => {
     const page = await context.newPage();
 
     try {
-      // Delete test fixture
-      const fixturesPage = new FixturesPage(page);
-      await fixturesPage.goto();
-      if (await fixturesPage.hasFixture(testData.fixture.name)) {
-        await fixturesPage.deleteFixture(testData.fixture.name);
+      // Delete test fixture - use try/catch for resilience
+      try {
+        const fixturesPage = new FixturesPage(page);
+        await fixturesPage.goto();
+        if (await fixturesPage.hasFixture(testData.fixture.name)) {
+          await fixturesPage.deleteFixture(testData.fixture.name);
+        }
+      } catch (e) {
+        console.log("Cleanup: Could not delete fixture (may not exist):", e);
       }
 
-      // Delete test look
-      const looksPage = new LooksPage(page);
-      await looksPage.goto();
-      if (await looksPage.hasLook(testData.look.name)) {
-        await looksPage.deleteLook(testData.look.name);
+      // Delete test look - use try/catch for resilience
+      try {
+        const looksPage = new LooksPage(page);
+        await looksPage.goto();
+        if (await looksPage.hasLook(testData.look.name)) {
+          await looksPage.deleteLook(testData.look.name);
+        }
+      } catch (e) {
+        console.log("Cleanup: Could not delete look (may not exist):", e);
       }
 
-      // Delete test effect
-      const effectsPage = new EffectsPage(page);
-      await effectsPage.goto();
-      if (await effectsPage.hasEffect(testData.effect.name)) {
-        await effectsPage.deleteEffect(testData.effect.name);
+      // Delete test effect - use try/catch for resilience
+      try {
+        const effectsPage = new EffectsPage(page);
+        await effectsPage.goto();
+        if (await effectsPage.hasEffect(testData.effect.name)) {
+          await effectsPage.deleteEffect(testData.effect.name);
+        }
+      } catch (e) {
+        console.log("Cleanup: Could not delete effect (may not exist):", e);
       }
     } finally {
       await context.close();
