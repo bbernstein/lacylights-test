@@ -3,6 +3,7 @@ import { DashboardPage } from "../pages/dashboard.page";
 import { FixturesPage } from "../pages/fixtures.page";
 import { LooksPage } from "../pages/looks.page";
 import { EffectsPage } from "../pages/effects.page";
+import { setupCiProxy } from "../helpers/ci-proxy";
 
 /**
  * LacyLights Dashboard E2E Tests
@@ -23,38 +24,8 @@ test.describe("Dashboard", () => {
   test.describe.configure({ mode: "serial" });
 
   // In CI, set up a fallback proxy in case any code still references port 4000.
-  // TODO: Extract this proxy logic to a shared test fixture to reduce duplication
-  // across test files (also used in happy-path.spec.ts).
   test.beforeEach(async ({ page }) => {
-    if (process.env.CI) {
-      await page.route("**/localhost:4000/**", async (route) => {
-        const request = route.request();
-        const originalUrl = request.url();
-        const proxiedUrl = originalUrl.replace(":4000", ":4001");
-
-        if (request.method() === "OPTIONS") {
-          await route.fulfill({
-            status: 204,
-            headers: {
-              "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-              "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
-              "Access-Control-Max-Age": "86400",
-            },
-          });
-          return;
-        }
-
-        const response = await route.fetch({ url: proxiedUrl });
-        await route.fulfill({
-          response,
-          headers: {
-            ...response.headers(),
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
-      });
-    }
+    await setupCiProxy(page);
   });
 
   // Use timestamp suffix to make test data unique across runs

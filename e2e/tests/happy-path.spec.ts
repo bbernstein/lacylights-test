@@ -4,6 +4,7 @@ import { LooksPage, LookEditorPage } from "../pages/looks.page";
 import { LookBoardListPage, LookBoardPage } from "../pages/look-board.page";
 import { CueListsPage, CueListEditorPage } from "../pages/cue-lists.page";
 import { EffectsPage, EffectEditorPage } from "../pages/effects.page";
+import { setupCiProxy } from "../helpers/ci-proxy";
 
 /**
  * LacyLights E2E Happy Path Tests
@@ -24,40 +25,8 @@ test.describe("LacyLights Happy Path", () => {
   test.describe.configure({ mode: "serial" });
 
   // In CI, set up a fallback proxy in case any code still references port 4000.
-  // The frontend is built with NEXT_PUBLIC_GRAPHQL_URL pointing to port 4001.
-  // Backend runs on 4001 with CORS_ALLOW_ALL=true to handle cross-origin requests.
   test.beforeEach(async ({ page }) => {
-    if (process.env.CI) {
-      // Fallback: If any code still references port 4000, proxy to 4001
-      // This should rarely be triggered since frontend is built with port 4001
-      await page.route("**/localhost:4000/**", async (route) => {
-        const request = route.request();
-        const originalUrl = request.url();
-        const proxiedUrl = originalUrl.replace(":4000", ":4001");
-
-        if (request.method() === "OPTIONS") {
-          await route.fulfill({
-            status: 204,
-            headers: {
-              "Access-Control-Allow-Origin": "*",
-              "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-              "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
-              "Access-Control-Max-Age": "86400",
-            },
-          });
-          return;
-        }
-
-        const response = await route.fetch({ url: proxiedUrl });
-        await route.fulfill({
-          response,
-          headers: {
-            ...response.headers(),
-            "Access-Control-Allow-Origin": "*",
-          },
-        });
-      });
-    }
+    await setupCiProxy(page);
   });
 
   // Shared test data

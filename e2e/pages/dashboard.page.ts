@@ -121,6 +121,7 @@ export class DashboardPage extends BasePage {
 
   /**
    * Click on a card title link to navigate to that section.
+   * Waits for the target page heading to be visible for reliable navigation.
    */
   async clickCardLink(
     card: "fixtures" | "looks" | "effects" | "look-boards" | "cue-lists" | "settings"
@@ -136,18 +137,38 @@ export class DashboardPage extends BasePage {
 
     const cardLocator = this.getCardLocator(card);
     await cardLocator.getByRole("link", { name: titles[card] }).click();
-    await this.page.waitForLoadState("networkidle");
+    // Wait for DOM to be ready, then wait for the target page heading
+    // Using domcontentloaded instead of networkidle for reliability in CI
+    // (networkidle can hang with WebSocket connections)
+    await this.page.waitForLoadState("domcontentloaded");
+    await expect(
+      this.page.getByRole("heading", { name: titles[card], level: 2 })
+    ).toBeVisible({ timeout: 10000 });
   }
 
   /**
    * Click the "View all" link on a specific card.
+   * Waits for the target page heading to be visible for reliable navigation.
    */
   async clickViewAll(
     card: "fixtures" | "looks" | "effects" | "look-boards" | "cue-lists" | "settings"
   ): Promise<void> {
+    const titles: Record<string, string> = {
+      fixtures: "Fixtures",
+      looks: "Looks",
+      effects: "Effects",
+      "look-boards": "Look Boards",
+      "cue-lists": "Cue Lists",
+      settings: "Settings",
+    };
+
     const cardLocator = this.getCardLocator(card);
     await cardLocator.getByRole("link", { name: /View all/ }).click();
-    await this.page.waitForLoadState("networkidle");
+    // Wait for DOM to be ready, then wait for the target page heading
+    await this.page.waitForLoadState("domcontentloaded");
+    await expect(
+      this.page.getByRole("heading", { name: titles[card], level: 2 })
+    ).toBeVisible({ timeout: 10000 });
   }
 
   /**
