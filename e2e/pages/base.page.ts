@@ -126,9 +126,12 @@ export class BasePage {
 
   /**
    * Confirm a browser dialog (alert/confirm).
+   * Uses page.once() to auto-remove the handler after it fires once,
+   * preventing "Cannot accept dialog which is already handled" errors
+   * when multiple page objects register handlers.
    */
   setupDialogHandler(accept: boolean = true): void {
-    this.page.on("dialog", async (dialog) => {
+    this.page.once("dialog", async (dialog) => {
       if (accept) {
         await dialog.accept();
       } else {
