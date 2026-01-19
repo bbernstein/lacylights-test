@@ -73,7 +73,8 @@ export class EffectsPage extends BasePage {
    */
   async activateEffect(name: string): Promise<void> {
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /activate|start|play/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /activate|start|play/i }).first().click();
   }
 
   /**
@@ -81,7 +82,8 @@ export class EffectsPage extends BasePage {
    */
   async stopEffect(name: string): Promise<void> {
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /stop|deactivate/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /stop|deactivate/i }).first().click();
   }
 
   /**
@@ -91,7 +93,8 @@ export class EffectsPage extends BasePage {
     this.setupDialogHandler(true);
 
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /delete/i }).click();
+    // Use .first() to handle responsive layouts with multiple delete buttons
+    await row.getByRole("button", { name: /delete/i }).first().click();
   }
 
   /**

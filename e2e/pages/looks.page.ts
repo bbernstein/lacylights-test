@@ -75,7 +75,8 @@ export class LooksPage extends BasePage {
     this.setupDialogHandler(true);
 
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /delete/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /delete/i }).first().click();
   }
 
   /**
@@ -85,7 +86,8 @@ export class LooksPage extends BasePage {
     this.setupDialogHandler(true);
 
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /duplicate/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /duplicate/i }).first().click();
   }
 
   /**

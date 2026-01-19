@@ -146,7 +146,8 @@ export class FixturesPage extends BasePage {
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
 
     // Click the delete button (red trash icon)
-    await row.getByRole("button", { name: /delete/i }).click();
+    // Use .first() to handle responsive layouts with multiple delete buttons
+    await row.getByRole("button", { name: /delete/i }).first().click();
   }
 
   /**
@@ -154,7 +155,8 @@ export class FixturesPage extends BasePage {
    */
   async editFixture(name: string): Promise<void> {
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /edit/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /edit/i }).first().click();
     await expect(this.page.getByRole("dialog")).toBeVisible();
   }
 }

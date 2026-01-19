@@ -39,7 +39,8 @@ export class CueListsPage extends BasePage {
   async openCueList(name: string): Promise<void> {
     // Find the row containing the cue list name and click the "Open" button
     const row = this.page.locator(`tr:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /open/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /open/i }).first().click();
     await this.page.waitForURL(/\/cue-lists\/[a-z0-9-]+/);
   }
 
@@ -69,7 +70,8 @@ export class CueListsPage extends BasePage {
     this.setupDialogHandler(true);
 
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /delete/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /delete/i }).first().click();
   }
 }
 
