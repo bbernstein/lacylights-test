@@ -18,7 +18,8 @@ export class CueListsPage extends BasePage {
    * Create a new cue list.
    */
   async createCueList(name: string, description?: string): Promise<void> {
-    await this.clickButton(/create|new.*cue.*list/i);
+    // Use exact match to avoid matching Undo button that may contain "Create" in its title
+    await this.page.getByRole("button", { name: "New Cue List", exact: true }).click();
     await expect(this.page.getByRole("dialog")).toBeVisible();
 
     await this.page.getByLabel(/name/i).fill(name);
@@ -39,7 +40,8 @@ export class CueListsPage extends BasePage {
   async openCueList(name: string): Promise<void> {
     // Find the row containing the cue list name and click the "Open" button
     const row = this.page.locator(`tr:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /open/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /open/i }).first().click();
     await this.page.waitForURL(/\/cue-lists\/[a-z0-9-]+/);
   }
 
@@ -69,7 +71,8 @@ export class CueListsPage extends BasePage {
     this.setupDialogHandler(true);
 
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /delete/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /delete/i }).first().click();
   }
 }
 
@@ -194,21 +197,24 @@ export class CueListEditorPage extends BasePage {
    * Stop playback of the cue list.
    */
   async stopPlayback(): Promise<void> {
-    await this.clickButton(/stop/i);
+    // Use specific pattern to avoid matching Undo button "Undo: Stop cue list..."
+    await this.page.getByRole("button", { name: /^Stop/ }).click();
   }
 
   /**
    * Go to the next cue.
    */
   async nextCue(): Promise<void> {
-    await this.clickButton(/next|forward|▶/i);
+    // Use specific title to avoid matching Next.js Dev Tools button
+    await this.page.getByRole("button", { name: "Next (→)" }).click();
   }
 
   /**
    * Go to the previous cue.
    */
   async previousCue(): Promise<void> {
-    await this.clickButton(/prev|back|◀/i);
+    // Use specific title pattern to avoid matching unrelated buttons
+    await this.page.getByRole("button", { name: /Prev.*\(←\)/ }).click();
   }
 
   /**

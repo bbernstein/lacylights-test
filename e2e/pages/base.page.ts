@@ -11,12 +11,14 @@ export class BasePage {
   }
 
   /**
-   * Navigate to a route and wait for network to settle.
+   * Navigate to a route and wait for DOM to be ready.
    * Also waits for the app to be ready (project selected).
+   * Uses domcontentloaded instead of networkidle for CI reliability
+   * (networkidle can hang with WebSocket connections).
    */
   async goto(path: string): Promise<void> {
     await this.page.goto(path);
-    await this.page.waitForLoadState("networkidle");
+    await this.page.waitForLoadState("domcontentloaded");
     await this.waitForAppReady();
   }
 
@@ -50,6 +52,7 @@ export class BasePage {
 
   /**
    * Navigate using the bottom navigation (mobile) or sidebar.
+   * Waits for the target page heading to be visible.
    */
   async navigateTo(
     destination: "fixtures" | "looks" | "look-board" | "cue-lists" | "effects" | "settings"
@@ -66,14 +69,20 @@ export class BasePage {
 
     const linkText = navLinks[destination];
     await this.page.getByRole("link", { name: linkText }).first().click();
-    await this.page.waitForLoadState("networkidle");
+    // Wait for DOM to be ready, then wait for the target page heading
+    await this.page.waitForLoadState("domcontentloaded");
+    await this.waitForHeading(linkText);
   }
 
   /**
    * Wait for the page heading to appear.
+   * Uses a 10s timeout for CI reliability where page loads may be slower.
+   * Accepts any heading level since pages may use h1 or h2.
    */
   async waitForHeading(text: string): Promise<void> {
-    await expect(this.page.getByRole("heading", { name: text, level: 2 })).toBeVisible();
+    await expect(this.page.getByRole("heading", { name: text })).toBeVisible({
+      timeout: 10000,
+    });
   }
 
   /**
@@ -118,9 +127,12 @@ export class BasePage {
 
   /**
    * Confirm a browser dialog (alert/confirm).
+   * Uses page.once() to auto-remove the handler after it fires once,
+   * preventing "Cannot accept dialog which is already handled" errors
+   * when multiple page objects register handlers.
    */
   setupDialogHandler(accept: boolean = true): void {
-    this.page.on("dialog", async (dialog) => {
+    this.page.once("dialog", async (dialog) => {
       if (accept) {
         await dialog.accept();
       } else {

@@ -247,7 +247,7 @@ jobs:
 
       - name: Run E2E tests
         working-directory: e2e
-        run: npx playwright test --reporter=list
+        run: npx playwright test
         env:
           CI: true
 

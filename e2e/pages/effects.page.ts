@@ -24,7 +24,10 @@ export class EffectsPage extends BasePage {
     frequency?: number;
     amplitude?: number;
   }): Promise<void> {
-    await this.clickButton(/create|new.*effect/i);
+    // Use exact match to avoid matching Undo button that may contain "Create" in its description
+    await this.page
+      .getByRole("button", { name: "Create Effect", exact: true })
+      .click();
     await expect(this.page.getByRole("dialog")).toBeVisible();
 
     await this.page.getByLabel(/effect name/i).fill(options.name);
@@ -72,7 +75,8 @@ export class EffectsPage extends BasePage {
    */
   async activateEffect(name: string): Promise<void> {
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /activate|start|play/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /activate|start|play/i }).first().click();
   }
 
   /**
@@ -80,7 +84,8 @@ export class EffectsPage extends BasePage {
    */
   async stopEffect(name: string): Promise<void> {
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /stop|deactivate/i }).click();
+    // Use .first() to handle responsive layouts with multiple buttons
+    await row.getByRole("button", { name: /stop|deactivate/i }).first().click();
   }
 
   /**
@@ -90,7 +95,8 @@ export class EffectsPage extends BasePage {
     this.setupDialogHandler(true);
 
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /delete/i }).click();
+    // Use .first() to handle responsive layouts with multiple delete buttons
+    await row.getByRole("button", { name: /delete/i }).first().click();
   }
 
   /**
@@ -127,17 +133,8 @@ export class EffectsPage extends BasePage {
    */
   async openEffectEditor(name: string): Promise<void> {
     const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // The edit button has title="Edit effect" (icon-only button)
-    // There may be both desktop and mobile buttons - click the visible one
-    const editButtons = row.locator('button[title="Edit effect"]');
-    const count = await editButtons.count();
-    for (let i = 0; i < count; i++) {
-      const btn = editButtons.nth(i);
-      if (await btn.isVisible()) {
-        await btn.click();
-        break;
-      }
-    }
+    // Use getByRole to find the Edit effect button by accessible name
+    await row.getByRole("button", { name: "Edit effect" }).first().click();
     // Wait for navigation to effect editor
     await this.page.waitForURL(/\/effects\/[a-z0-9-]+\/edit/);
   }
@@ -416,14 +413,16 @@ export class EffectEditorPage extends BasePage {
    * Activate/play the effect from the editor.
    */
   async activate(): Promise<void> {
-    await this.clickButton(/activate|play|start/i);
+    // Use exact match to avoid matching Undo/Redo buttons
+    await this.page.getByRole("button", { name: "Activate", exact: true }).click();
   }
 
   /**
    * Stop the effect from the editor.
    */
   async stop(): Promise<void> {
-    await this.clickButton(/stop|deactivate/i);
+    // Use exact match to avoid matching Undo/Redo buttons that contain "Stop"
+    await this.page.getByRole("button", { name: "Stop", exact: true }).click();
   }
 
   /**
@@ -431,10 +430,13 @@ export class EffectEditorPage extends BasePage {
    */
   async goBack(): Promise<void> {
     await this.page.goBack();
-    await this.page.waitForURL(/\/effects$/);
+    // Match /effects or /effects/ (with or without trailing slash)
+    await this.page.waitForURL(/\/effects\/?$/);
     // Wait for the effects list to load
     await this.page.waitForLoadState("networkidle");
     // Wait for the Effects heading to be visible
     await expect(this.page.getByRole("heading", { name: /^effects$/i })).toBeVisible({ timeout: 5000 });
+    // Wait for table to be populated
+    await this.page.waitForTimeout(500);
   }
 }
