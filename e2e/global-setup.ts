@@ -158,12 +158,12 @@ async function cleanupGlobalState(): Promise<void> {
     const projectsResult = await projectsResponse.json();
     const projects = projectsResult.data?.projects || [];
 
-    // Find old E2E test projects (more than 1 hour old based on timestamp in name)
+    // Find all E2E test projects from previous runs (identified by name prefix)
     const e2eProjects = projects.filter((p: { name: string }) =>
       p.name.startsWith("E2E Test ")
     );
 
-    // Delete all old E2E test projects
+    // Delete all E2E test projects to ensure clean state
     for (const project of e2eProjects) {
       try {
         await fetch("http://localhost:4001/graphql", {
