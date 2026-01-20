@@ -71,21 +71,47 @@ export class EffectsPage extends BasePage {
   }
 
   /**
+   * Get the effect row/card element by name.
+   * Uses specific selectors to avoid matching parent containers.
+   * Filters for visible elements to handle responsive layouts (mobile vs desktop).
+   */
+  private getEffectRow(name: string) {
+    // Desktop: table row within tbody
+    // Mobile: direct child div of the card container (md:hidden and space-y-4 are on same element)
+    // Use :visible pseudo-class to only match the currently visible layout
+    return this.page.locator(
+      `tbody tr:has-text("${name}"):visible, div.space-y-4 > div.bg-white:has-text("${name}"):visible, div.space-y-4 > div.dark\\:bg-gray-800:has-text("${name}"):visible`
+    ).first();
+  }
+
+  /**
    * Activate an effect by name.
    */
   async activateEffect(name: string): Promise<void> {
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /activate|start|play/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getEffectRow(name);
+    const activateButton = row.locator('button[title="Activate effect"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(activateButton).toBeVisible({ timeout: 10000 });
+    await activateButton.click();
   }
 
   /**
    * Stop an effect by name.
    */
   async stopEffect(name: string): Promise<void> {
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /stop|deactivate/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getEffectRow(name);
+    const stopButton = row.locator('button[title="Stop effect"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(stopButton).toBeVisible({ timeout: 10000 });
+    await stopButton.click();
   }
 
   /**
@@ -94,9 +120,15 @@ export class EffectsPage extends BasePage {
   async deleteEffect(name: string): Promise<void> {
     this.setupDialogHandler(true);
 
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple delete buttons
-    await row.getByRole("button", { name: /delete/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getEffectRow(name);
+    const deleteButton = row.locator('button[title="Delete effect"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(deleteButton).toBeVisible({ timeout: 10000 });
+    await deleteButton.click();
   }
 
   /**
@@ -122,7 +154,7 @@ export class EffectsPage extends BasePage {
    * Check if an effect is currently active.
    */
   async isEffectActive(name: string): Promise<boolean> {
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
+    const row = this.getEffectRow(name);
     // Look for active indicator
     const activeIndicator = row.locator("[class*='active'], [class*='running']");
     return await activeIndicator.isVisible();
@@ -132,9 +164,21 @@ export class EffectsPage extends BasePage {
    * Open the effect editor for an effect by name.
    */
   async openEffectEditor(name: string): Promise<void> {
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use getByRole to find the Edit effect button by accessible name
-    await row.getByRole("button", { name: "Edit effect" }).first().click();
+    // Wait for the effects list to load (loading text disappears)
+    await this.page.waitForFunction(
+      () => {
+        const body = document.body.textContent || "";
+        return !body.includes("Loading effects...");
+      },
+      { timeout: 10000 }
+    );
+
+    // Wait for the effect row to be visible
+    const row = this.getEffectRow(name);
+    await expect(row).toBeVisible({ timeout: 10000 });
+
+    // Use title attribute selector as it's more reliable
+    await row.locator('button[title="Edit effect"]').click();
     // Wait for navigation to effect editor
     await this.page.waitForURL(/\/effects\/[a-z0-9-]+\/edit/);
   }

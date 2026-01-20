@@ -35,13 +35,32 @@ export class CueListsPage extends BasePage {
   }
 
   /**
+   * Get the cue list row/card element by name.
+   * Uses specific selectors to avoid matching parent containers.
+   * Filters for visible elements to handle responsive layouts (mobile vs desktop).
+   */
+  private getCueListRow(name: string) {
+    // Desktop: table row within tbody
+    // Mobile: card divs in the mobile layout container
+    // Use :visible pseudo-class to only match the currently visible layout
+    return this.page.locator(
+      `tbody tr:has-text("${name}"):visible, div.space-y-4 > div.bg-white:has-text("${name}"):visible, div.space-y-4 > div.dark\\:bg-gray-800:has-text("${name}"):visible`
+    ).first();
+  }
+
+  /**
    * Open a cue list by name.
    */
   async openCueList(name: string): Promise<void> {
-    // Find the row containing the cue list name and click the "Open" button
-    const row = this.page.locator(`tr:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /open/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getCueListRow(name);
+    const openButton = row.locator('button[title="Open cue list"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(openButton).toBeVisible({ timeout: 10000 });
+    await openButton.click();
     await this.page.waitForURL(/\/cue-lists\/[a-z0-9-]+/);
   }
 
@@ -70,9 +89,15 @@ export class CueListsPage extends BasePage {
   async deleteCueList(name: string): Promise<void> {
     this.setupDialogHandler(true);
 
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /delete/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getCueListRow(name);
+    const deleteButton = row.locator('button[title="Delete cue list"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(deleteButton).toBeVisible({ timeout: 10000 });
+    await deleteButton.click();
   }
 }
 
@@ -380,7 +405,10 @@ export class CueListEditorPage extends BasePage {
    */
   async goToCue(cueName: string): Promise<void> {
     // In player view, cues are shown as buttons like "0.5: Opening"
-    const cueButton = this.page.getByRole("button", { name: new RegExp(cueName) });
+    // Use a regex that matches cue number format to avoid matching Undo button
+    // Cue buttons have format like "0.5: Opening" or "1: Blackout"
+    const cueNumberPattern = new RegExp(`\\d+(\\.\\d+)?:\\s*${cueName}`);
+    const cueButton = this.page.getByRole("button", { name: cueNumberPattern });
     if (await cueButton.first().isVisible()) {
       await cueButton.first().click();
       await this.page.waitForTimeout(500);

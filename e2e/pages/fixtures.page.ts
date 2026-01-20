@@ -145,26 +145,49 @@ export class FixturesPage extends BasePage {
   }
 
   /**
+   * Get the fixture row/card element by name.
+   * Uses specific selectors to avoid matching parent containers.
+   * Filters for visible elements to handle responsive layouts (mobile vs desktop).
+   */
+  private getFixtureRow(name: string) {
+    // Desktop: table row within tbody
+    // Mobile: card divs in the mobile layout container
+    // Use :visible pseudo-class to only match the currently visible layout
+    return this.page.locator(
+      `tbody tr:has-text("${name}"):visible, div.space-y-4 > div.bg-white:has-text("${name}"):visible, div.space-y-4 > div.dark\\:bg-gray-800:has-text("${name}"):visible`
+    ).first();
+  }
+
+  /**
    * Delete a fixture by name.
    */
   async deleteFixture(name: string): Promise<void> {
     this.setupDialogHandler(true);
 
-    // Find the row/card containing this fixture
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
 
-    // Click the delete button (red trash icon)
-    // Use .first() to handle responsive layouts with multiple delete buttons
-    await row.getByRole("button", { name: /delete/i }).first().click();
+    const row = this.getFixtureRow(name);
+    const deleteButton = row.locator('button[title="Delete fixture"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(deleteButton).toBeVisible({ timeout: 10000 });
+    await deleteButton.click();
   }
 
   /**
    * Edit a fixture by name.
    */
   async editFixture(name: string): Promise<void> {
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /edit/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getFixtureRow(name);
+    const editButton = row.locator('button[title="Edit fixture"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(editButton).toBeVisible({ timeout: 10000 });
+    await editButton.click();
     await expect(this.page.getByRole("dialog")).toBeVisible();
   }
 }
