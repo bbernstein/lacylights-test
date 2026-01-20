@@ -136,8 +136,8 @@ export class CueListEditorPage extends BasePage {
     if (await backButton.isVisible()) {
       await backButton.click();
       await this.page.waitForURL(/\/cue-lists\/?$/);
-      // Wait for the page to fully load before returning
-      await this.waitForLoading();
+      // Wait for the Cue Lists heading to be visible as indicator page is ready
+      await this.waitForHeading("Cue Lists");
     }
   }
 
