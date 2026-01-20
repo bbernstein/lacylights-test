@@ -72,16 +72,10 @@ export class EffectsPage extends BasePage {
 
   /**
    * Get the effect row/card element by name.
-   * Uses specific selectors to avoid matching parent containers.
-   * Filters for visible elements to handle responsive layouts (mobile vs desktop).
+   * Delegates to the base class getItemRow method.
    */
   private getEffectRow(name: string) {
-    // Desktop: table row within tbody
-    // Mobile: direct child div of the card container (md:hidden and space-y-4 are on same element)
-    // Use :visible pseudo-class to only match the currently visible layout
-    return this.page.locator(
-      `tbody tr:has-text("${name}"):visible, div.space-y-4 > div.bg-white:has-text("${name}"):visible, div.space-y-4 > div.dark\\:bg-gray-800:has-text("${name}"):visible`
-    ).first();
+    return this.getItemRow(name);
   }
 
   /**
@@ -164,14 +158,8 @@ export class EffectsPage extends BasePage {
    * Open the effect editor for an effect by name.
    */
   async openEffectEditor(name: string): Promise<void> {
-    // Wait for the effects list to load (loading text disappears)
-    await this.page.waitForFunction(
-      () => {
-        const body = document.body.textContent || "";
-        return !body.includes("Loading effects...");
-      },
-      { timeout: 10000 }
-    );
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
 
     // Wait for the effect row to be visible
     const row = this.getEffectRow(name);

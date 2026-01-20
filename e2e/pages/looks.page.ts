@@ -16,16 +16,10 @@ export class LooksPage extends BasePage {
 
   /**
    * Get the look row/card element by name.
-   * Uses specific selectors to avoid matching parent containers.
-   * Filters for visible elements to handle responsive layouts (mobile vs desktop).
+   * Delegates to the base class getItemRow method.
    */
   private getLookRow(name: string) {
-    // Desktop: table row within tbody
-    // Mobile: card divs in the mobile layout container
-    // Use :visible pseudo-class to only match the currently visible layout
-    return this.page.locator(
-      `tbody tr:has-text("${name}"):visible, div.space-y-4 > div.bg-white:has-text("${name}"):visible, div.space-y-4 > div.dark\\:bg-gray-800:has-text("${name}"):visible`
-    ).first();
+    return this.getItemRow(name);
   }
 
   /**

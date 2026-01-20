@@ -36,16 +36,10 @@ export class CueListsPage extends BasePage {
 
   /**
    * Get the cue list row/card element by name.
-   * Uses specific selectors to avoid matching parent containers.
-   * Filters for visible elements to handle responsive layouts (mobile vs desktop).
+   * Delegates to the base class getItemRow method.
    */
   private getCueListRow(name: string) {
-    // Desktop: table row within tbody
-    // Mobile: card divs in the mobile layout container
-    // Use :visible pseudo-class to only match the currently visible layout
-    return this.page.locator(
-      `tbody tr:has-text("${name}"):visible, div.space-y-4 > div.bg-white:has-text("${name}"):visible, div.space-y-4 > div.dark\\:bg-gray-800:has-text("${name}"):visible`
-    ).first();
+    return this.getItemRow(name);
   }
 
   /**
@@ -267,8 +261,9 @@ export class CueListEditorPage extends BasePage {
    * Uses right-click context menu to open EditCueDialog.
    */
   async editCue(cueName: string): Promise<void> {
-    // Find the cue row
-    const cueRow = this.page.locator(`tr:has-text("${cueName}"), [data-cue-name="${cueName}"]`).first();
+    // Find the cue row - escape for safe use in selector
+    const escapedForSelector = this.escapeTextForSelector(cueName);
+    const cueRow = this.page.locator(`tr:has-text("${escapedForSelector}"), [data-cue-name="${escapedForSelector}"]`).first();
 
     // Right-click to open context menu
     await cueRow.click({ button: "right" });
@@ -393,7 +388,8 @@ export class CueListEditorPage extends BasePage {
    * Check if an effect indicator is shown for a cue.
    */
   async cueShowsEffectIndicator(cueName: string): Promise<boolean> {
-    const cueRow = this.page.locator(`tr:has-text("${cueName}"), [data-cue-name="${cueName}"]`).first();
+    const escapedForSelector = this.escapeTextForSelector(cueName);
+    const cueRow = this.page.locator(`tr:has-text("${escapedForSelector}"), [data-cue-name="${escapedForSelector}"]`).first();
     // Look for effect indicator (icon, badge, or text)
     const effectIndicator = cueRow.locator("[class*='effect'], [title*='effect'], [aria-label*='effect']");
     return await effectIndicator.isVisible();
@@ -404,10 +400,14 @@ export class CueListEditorPage extends BasePage {
    * Works in both player view (buttons) and edit view (table rows).
    */
   async goToCue(cueName: string): Promise<void> {
+    // Escape special characters for safe use in regex and selector strings
+    const escapedForRegex = this.escapeRegex(cueName);
+    const escapedForSelector = this.escapeTextForSelector(cueName);
+
     // In player view, cues are shown as buttons like "0.5: Opening"
     // Use a regex that matches cue number format to avoid matching Undo button
     // Cue buttons have format like "0.5: Opening" or "1: Blackout"
-    const cueNumberPattern = new RegExp(`\\d+(\\.\\d+)?:\\s*${cueName}`);
+    const cueNumberPattern = new RegExp(`\\d+(\\.\\d+)?:\\s*${escapedForRegex}`);
     const cueButton = this.page.getByRole("button", { name: cueNumberPattern });
     if (await cueButton.first().isVisible()) {
       await cueButton.first().click();
@@ -416,7 +416,7 @@ export class CueListEditorPage extends BasePage {
     }
 
     // In edit view, cues are in table rows
-    const cueRow = this.page.locator(`tr:has-text("${cueName}"), [data-cue-name="${cueName}"]`).first();
+    const cueRow = this.page.locator(`tr:has-text("${escapedForSelector}"), [data-cue-name="${escapedForSelector}"]`).first();
     await cueRow.click();
     await this.page.waitForTimeout(500);
   }
