@@ -86,7 +86,7 @@ export class EffectsPage extends BasePage {
     await this.waitForLoading();
 
     const row = this.getEffectRow(name);
-    const activateButton = row.locator('button[title="Activate effect"]');
+    const activateButton = row.locator('button[title*="Activate effect"]');
 
     // Wait for the button to be visible before clicking
     await expect(activateButton).toBeVisible({ timeout: 10000 });
@@ -101,7 +101,7 @@ export class EffectsPage extends BasePage {
     await this.waitForLoading();
 
     const row = this.getEffectRow(name);
-    const stopButton = row.locator('button[title="Stop effect"]');
+    const stopButton = row.locator('button[title*="Stop effect"]');
 
     // Wait for the button to be visible before clicking
     await expect(stopButton).toBeVisible({ timeout: 10000 });
@@ -118,7 +118,7 @@ export class EffectsPage extends BasePage {
     await this.waitForLoading();
 
     const row = this.getEffectRow(name);
-    const deleteButton = row.locator('button[title="Delete effect"]');
+    const deleteButton = row.locator('button[title*="Delete effect"]');
 
     // Wait for the button to be visible before clicking
     await expect(deleteButton).toBeVisible({ timeout: 10000 });
@@ -166,7 +166,7 @@ export class EffectsPage extends BasePage {
     await expect(row).toBeVisible({ timeout: 10000 });
 
     // Use title attribute selector as it's more reliable
-    await row.locator('button[title="Edit effect"]').click();
+    await row.locator('button[title*="Edit effect"]').click();
     // Wait for navigation to effect editor
     await this.page.waitForURL(/\/effects\/[a-z0-9-]+\/edit/);
   }
