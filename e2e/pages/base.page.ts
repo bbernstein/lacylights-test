@@ -102,13 +102,14 @@ export class BasePage {
 
   /**
    * Wait for a loading state to complete.
+   * Uses 30s timeout to accommodate slower CI environments.
    */
   async waitForLoading(): Promise<void> {
     // Wait for any "Loading..." text to disappear
     await this.page.waitForFunction(() => {
       const body = document.body.textContent || "";
       return !body.includes("Loading...");
-    }, { timeout: 10000 });
+    }, { timeout: 30000 });
   }
 
   /**
