@@ -15,6 +15,14 @@ export class LooksPage extends BasePage {
   }
 
   /**
+   * Get the look row/card element by name.
+   * Delegates to the base class getItemRow method.
+   */
+  private getLookRow(name: string) {
+    return this.getItemRow(name);
+  }
+
+  /**
    * Click "Create Look" button to open the modal.
    */
   async openCreateLookModal(): Promise<void> {
@@ -51,8 +59,15 @@ export class LooksPage extends BasePage {
    * Open a look for editing.
    */
   async openLook(name: string): Promise<void> {
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /edit/i }).click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getLookRow(name);
+    const editButton = row.locator('button[title="Edit look"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(editButton).toBeVisible({ timeout: 10000 });
+    await editButton.click();
 
     // Wait for navigation to look editor
     await this.page.waitForURL(/\/looks\/[a-z0-9-]+\/edit/);
@@ -62,10 +77,15 @@ export class LooksPage extends BasePage {
    * Activate a look directly from the list.
    */
   async activateLook(name: string): Promise<void> {
-    // Use main content area to avoid matching cue list tables
-    const mainTable = this.page.locator("main tbody");
-    const row = mainTable.locator(`tr:has-text("${name}")`).first();
-    await row.getByRole("button", { name: /activate/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getLookRow(name);
+    const activateButton = row.locator('button[title="Activate look"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(activateButton).toBeVisible({ timeout: 10000 });
+    await activateButton.click();
   }
 
   /**
@@ -74,9 +94,15 @@ export class LooksPage extends BasePage {
   async deleteLook(name: string): Promise<void> {
     this.setupDialogHandler(true);
 
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /delete/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getLookRow(name);
+    const deleteButton = row.locator('button[title="Delete look"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(deleteButton).toBeVisible({ timeout: 10000 });
+    await deleteButton.click();
   }
 
   /**
@@ -85,9 +111,15 @@ export class LooksPage extends BasePage {
   async duplicateLook(name: string): Promise<void> {
     this.setupDialogHandler(true);
 
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /duplicate/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getLookRow(name);
+    const duplicateButton = row.locator('button[title="Duplicate look"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(duplicateButton).toBeVisible({ timeout: 10000 });
+    await duplicateButton.click();
   }
 
   /**

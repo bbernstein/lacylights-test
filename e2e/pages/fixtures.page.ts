@@ -145,26 +145,43 @@ export class FixturesPage extends BasePage {
   }
 
   /**
+   * Get the fixture row/card element by name.
+   * Delegates to the base class getItemRow method.
+   */
+  private getFixtureRow(name: string) {
+    return this.getItemRow(name);
+  }
+
+  /**
    * Delete a fixture by name.
    */
   async deleteFixture(name: string): Promise<void> {
     this.setupDialogHandler(true);
 
-    // Find the row/card containing this fixture
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
 
-    // Click the delete button (red trash icon)
-    // Use .first() to handle responsive layouts with multiple delete buttons
-    await row.getByRole("button", { name: /delete/i }).first().click();
+    const row = this.getFixtureRow(name);
+    const deleteButton = row.locator('button[title="Delete fixture"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(deleteButton).toBeVisible({ timeout: 10000 });
+    await deleteButton.click();
   }
 
   /**
    * Edit a fixture by name.
    */
   async editFixture(name: string): Promise<void> {
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /edit/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getFixtureRow(name);
+    const editButton = row.locator('button[title="Edit fixture"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(editButton).toBeVisible({ timeout: 10000 });
+    await editButton.click();
     await expect(this.page.getByRole("dialog")).toBeVisible();
   }
 }

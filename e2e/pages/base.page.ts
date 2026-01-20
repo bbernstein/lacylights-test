@@ -102,13 +102,14 @@ export class BasePage {
 
   /**
    * Wait for a loading state to complete.
+   * Uses 30s timeout to accommodate slower CI environments.
    */
   async waitForLoading(): Promise<void> {
     // Wait for any "Loading..." text to disappear
     await this.page.waitForFunction(() => {
       const body = document.body.textContent || "";
       return !body.includes("Loading...");
-    }, { timeout: 10000 });
+    }, { timeout: 30000 });
   }
 
   /**
@@ -154,5 +155,35 @@ export class BasePage {
   async hasText(text: string | RegExp): Promise<boolean> {
     const elements = await this.page.getByText(text).all();
     return elements.length > 0;
+  }
+
+  /**
+   * Escape text for safe use inside :has-text("...") selector strings.
+   * Ensures that double quotes and backslashes do not break the selector.
+   */
+  protected escapeTextForSelector(text: string): string {
+    return text.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  }
+
+  /**
+   * Escape text for safe use in RegExp constructor.
+   * Ensures that regex special characters are treated as literals.
+   */
+  protected escapeRegex(text: string): string {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  /**
+   * Get a row/card element by name from responsive layouts.
+   * Works for both desktop table rows and mobile card layouts.
+   * Uses :visible pseudo-class to only match the currently visible layout.
+   */
+  protected getItemRow(name: string): Locator {
+    const escapedName = this.escapeTextForSelector(name);
+    // Desktop: table row within tbody
+    // Mobile: card divs in the mobile layout container
+    return this.page.locator(
+      `tbody tr:has-text("${escapedName}"):visible, div.space-y-4 > div.bg-white:has-text("${escapedName}"):visible, div.space-y-4 > div.dark\\:bg-gray-800:has-text("${escapedName}"):visible`
+    ).first();
   }
 }

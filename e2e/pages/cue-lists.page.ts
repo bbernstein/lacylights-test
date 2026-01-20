@@ -35,13 +35,26 @@ export class CueListsPage extends BasePage {
   }
 
   /**
+   * Get the cue list row/card element by name.
+   * Delegates to the base class getItemRow method.
+   */
+  private getCueListRow(name: string) {
+    return this.getItemRow(name);
+  }
+
+  /**
    * Open a cue list by name.
    */
   async openCueList(name: string): Promise<void> {
-    // Find the row containing the cue list name and click the "Open" button
-    const row = this.page.locator(`tr:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /open/i }).first().click();
+    // Wait for the cue list row to be visible (more reliable than waitForLoading)
+    const row = this.getCueListRow(name);
+    await expect(row).toBeVisible({ timeout: 30000 });
+
+    const openButton = row.locator('button[title="Open cue list"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(openButton).toBeVisible({ timeout: 10000 });
+    await openButton.click();
     await this.page.waitForURL(/\/cue-lists\/[a-z0-9-]+/);
   }
 
@@ -70,9 +83,15 @@ export class CueListsPage extends BasePage {
   async deleteCueList(name: string): Promise<void> {
     this.setupDialogHandler(true);
 
-    const row = this.page.locator(`tr:has-text("${name}"), div:has-text("${name}")`).first();
-    // Use .first() to handle responsive layouts with multiple buttons
-    await row.getByRole("button", { name: /delete/i }).first().click();
+    // Wait for page to finish loading before interacting
+    await this.waitForLoading();
+
+    const row = this.getCueListRow(name);
+    const deleteButton = row.locator('button[title="Delete cue list"]');
+
+    // Wait for the button to be visible before clicking
+    await expect(deleteButton).toBeVisible({ timeout: 10000 });
+    await deleteButton.click();
   }
 }
 
@@ -117,7 +136,8 @@ export class CueListEditorPage extends BasePage {
     if (await backButton.isVisible()) {
       await backButton.click();
       await this.page.waitForURL(/\/cue-lists\/?$/);
-      await this.page.waitForTimeout(500);
+      // Wait for the Cue Lists heading to be visible as indicator page is ready
+      await this.waitForHeading("Cue Lists");
     }
   }
 
@@ -242,8 +262,9 @@ export class CueListEditorPage extends BasePage {
    * Uses right-click context menu to open EditCueDialog.
    */
   async editCue(cueName: string): Promise<void> {
-    // Find the cue row
-    const cueRow = this.page.locator(`tr:has-text("${cueName}"), [data-cue-name="${cueName}"]`).first();
+    // Find the cue row - escape for safe use in selector
+    const escapedForSelector = this.escapeTextForSelector(cueName);
+    const cueRow = this.page.locator(`tr:has-text("${escapedForSelector}"), [data-cue-name="${escapedForSelector}"]`).first();
 
     // Right-click to open context menu
     await cueRow.click({ button: "right" });
@@ -368,7 +389,8 @@ export class CueListEditorPage extends BasePage {
    * Check if an effect indicator is shown for a cue.
    */
   async cueShowsEffectIndicator(cueName: string): Promise<boolean> {
-    const cueRow = this.page.locator(`tr:has-text("${cueName}"), [data-cue-name="${cueName}"]`).first();
+    const escapedForSelector = this.escapeTextForSelector(cueName);
+    const cueRow = this.page.locator(`tr:has-text("${escapedForSelector}"), [data-cue-name="${escapedForSelector}"]`).first();
     // Look for effect indicator (icon, badge, or text)
     const effectIndicator = cueRow.locator("[class*='effect'], [title*='effect'], [aria-label*='effect']");
     return await effectIndicator.isVisible();
@@ -379,8 +401,15 @@ export class CueListEditorPage extends BasePage {
    * Works in both player view (buttons) and edit view (table rows).
    */
   async goToCue(cueName: string): Promise<void> {
+    // Escape special characters for safe use in regex and selector strings
+    const escapedForRegex = this.escapeRegex(cueName);
+    const escapedForSelector = this.escapeTextForSelector(cueName);
+
     // In player view, cues are shown as buttons like "0.5: Opening"
-    const cueButton = this.page.getByRole("button", { name: new RegExp(cueName) });
+    // Use a regex that matches cue number format to avoid matching Undo button
+    // Cue buttons have format like "0.5: Opening" or "1: Blackout"
+    const cueNumberPattern = new RegExp(`\\d+(\\.\\d+)?:\\s*${escapedForRegex}`);
+    const cueButton = this.page.getByRole("button", { name: cueNumberPattern });
     if (await cueButton.first().isVisible()) {
       await cueButton.first().click();
       await this.page.waitForTimeout(500);
@@ -388,7 +417,7 @@ export class CueListEditorPage extends BasePage {
     }
 
     // In edit view, cues are in table rows
-    const cueRow = this.page.locator(`tr:has-text("${cueName}"), [data-cue-name="${cueName}"]`).first();
+    const cueRow = this.page.locator(`tr:has-text("${escapedForSelector}"), [data-cue-name="${escapedForSelector}"]`).first();
     await cueRow.click();
     await this.page.waitForTimeout(500);
   }
