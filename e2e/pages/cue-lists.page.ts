@@ -136,7 +136,8 @@ export class CueListEditorPage extends BasePage {
     if (await backButton.isVisible()) {
       await backButton.click();
       await this.page.waitForURL(/\/cue-lists\/?$/);
-      await this.page.waitForTimeout(500);
+      // Wait for the page to fully load before returning
+      await this.waitForLoading();
     }
   }
 
