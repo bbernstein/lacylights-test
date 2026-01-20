@@ -46,10 +46,10 @@ export class CueListsPage extends BasePage {
    * Open a cue list by name.
    */
   async openCueList(name: string): Promise<void> {
-    // Wait for page to finish loading before interacting
-    await this.waitForLoading();
-
+    // Wait for the cue list row to be visible (more reliable than waitForLoading)
     const row = this.getCueListRow(name);
+    await expect(row).toBeVisible({ timeout: 30000 });
+
     const openButton = row.locator('button[title="Open cue list"]');
 
     // Wait for the button to be visible before clicking
