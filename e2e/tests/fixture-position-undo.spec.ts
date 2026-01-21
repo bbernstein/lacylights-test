@@ -5,6 +5,16 @@ import { Layout2DPage } from "../pages/layout-2d.page";
 import { setupCiProxy } from "../helpers/ci-proxy";
 
 /**
+ * Extract look ID from a URL matching the pattern /looks/{id}/edit
+ * @param url - The URL to extract from
+ * @returns The look ID if found, undefined otherwise
+ */
+function extractLookIdFromUrl(url: string): string | undefined {
+  const match = url.match(/\/looks\/([a-z0-9-]+)\/edit/);
+  return match ? match[1] : undefined;
+}
+
+/**
  * LacyLights E2E Tests: Fixture Position Undo/Redo
  *
  * This test suite validates that fixture position changes in the 2D Layout
@@ -20,6 +30,9 @@ import { setupCiProxy } from "../helpers/ci-proxy";
  */
 
 test.describe("Fixture Position Undo/Redo", () => {
+  // Serial mode is intentional: tests build on each other to simulate a real
+  // user session. Test 5 (undo) requires Test 4 (save position) to have run.
+  // This mirrors how a user would actually interact with the system.
   test.describe.configure({ mode: "serial" });
 
   // In CI, set up a fallback proxy in case any code still references port 4000.
@@ -27,14 +40,15 @@ test.describe("Fixture Position Undo/Redo", () => {
     await setupCiProxy(page);
   });
 
-  // Test data
+  // Test data - uses startChannel 100 to avoid conflicts with default channel 1
+  // Edge case tests use startChannel 200 to ensure isolation if cleanup fails
   const testData = {
     fixture: {
       name: "Position Test Light",
       manufacturer: "Generic",
       model: "RGB Fader",
       universe: 1,
-      startChannel: 100, // Use high channel to avoid conflicts
+      startChannel: 100,
     },
     look: {
       name: "Position Test Look",
@@ -59,12 +73,9 @@ test.describe("Fixture Position Undo/Redo", () => {
 
     // Get the look ID from the URL when opening the look
     await looksPage.openLook(testData.look.name);
-    const url = page.url();
-    const match = url.match(/\/looks\/([a-z0-9-]+)\/edit/);
-    if (match) {
-      lookId = match[1];
-    }
-    expect(lookId).toBeDefined();
+    const extractedLookId = extractLookIdFromUrl(page.url());
+    expect(extractedLookId).toBeDefined();
+    lookId = extractedLookId!;
   });
 
   test("2. Switch to 2D Layout and verify canvas renders", async ({ page }) => {
@@ -216,14 +227,15 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
     await setupCiProxy(page);
   });
 
-  // Test data for edge case tests
+  // Test data for edge case tests - uses startChannel 200 (different from main
+  // suite's 100) to ensure test isolation even if main suite cleanup fails
   const edgeCaseTestData = {
     fixture: {
       name: "Edge Case Test Light",
       manufacturer: "Generic",
       model: "RGB Fader",
       universe: 1,
-      startChannel: 200, // Different channel to avoid conflicts
+      startChannel: 200,
     },
     look: {
       name: "Edge Case Test Look",
@@ -255,12 +267,9 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
 
     // Get the look ID from the URL when opening the look
     await looksPage.openLook(edgeCaseTestData.look.name);
-    const url = page.url();
-    const match = url.match(/\/looks\/([a-z0-9-]+)\/edit/);
-    if (match) {
-      edgeCaseLookId = match[1];
-    }
-    expect(edgeCaseLookId).toBeDefined();
+    const extractedLookId = extractLookIdFromUrl(page.url());
+    expect(extractedLookId).toBeDefined();
+    edgeCaseLookId = extractedLookId!;
   });
 
   test("Undo without prior changes does nothing harmful in 2D Layout", async ({
@@ -291,7 +300,8 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
     page,
   }) => {
     // This test ensures that rapid undo operations don't cause race conditions
-    // in the 2D Layout view
+    // in the 2D Layout view. It validates that the UI remains stable even when
+    // users press undo repeatedly and quickly.
     const layout2D = new Layout2DPage(page);
     await layout2D.goto(edgeCaseLookId);
     await layout2D.switchTo2DLayout();
@@ -301,10 +311,16 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
 
     const modifier = process.platform === "darwin" ? "Meta" : "Control";
 
+    // Rapid undo simulation parameters:
+    // - 5 iterations: typical rapid keypress scenario
+    // - 50ms delay: faster than human but allows event processing
+    const RAPID_UNDO_COUNT = 5;
+    const RAPID_UNDO_DELAY_MS = 50;
+
     // Press undo multiple times rapidly
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < RAPID_UNDO_COUNT; i++) {
       await page.keyboard.press(`${modifier}+z`);
-      await page.waitForTimeout(50);
+      await page.waitForTimeout(RAPID_UNDO_DELAY_MS);
     }
 
     // Wait for any async operations to settle
@@ -313,9 +329,10 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
     // Canvas should still be visible and functional
     await expect(layout2D.getCanvas()).toBeVisible();
 
-    // Save button state should be valid (not in error state)
+    // Verify hasPendingChanges returns a valid boolean (not undefined/null/error)
+    // Either true or false is acceptable - the important thing is the UI didn't crash
     const hasPending = await layout2D.hasPendingChanges();
-    expect(typeof hasPending).toBe("boolean");
+    expect(hasPending === true || hasPending === false).toBe(true);
   });
 
   test("Cleanup: Delete edge case test data", async ({ page }) => {

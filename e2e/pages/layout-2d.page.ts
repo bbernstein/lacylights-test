@@ -5,6 +5,14 @@ import { BasePage } from "./base.page";
  * Timeout constants for canvas operations.
  * Documented reasoning for each timeout value.
  */
+/**
+ * Timeout constants for canvas operations.
+ *
+ * Note: These fixed timeouts are intentional and appropriate for canvas-based E2E tests.
+ * Unlike DOM elements that can be polled for state changes, the canvas rendering pipeline
+ * and WebSocket pubsub don't expose pollable state. These values are tuned for reliability
+ * across local and CI environments.
+ */
 const TIMEOUTS = {
   /** Time for canvas rendering to stabilize after navigation */
   CANVAS_STABILIZATION: 500,
@@ -131,7 +139,10 @@ export class Layout2DPage extends BasePage {
     const box = await canvas.boundingBox();
 
     if (!box) {
-      throw new Error("Canvas bounding box not found");
+      throw new Error(
+        `Canvas bounding box not found during drag operation from (${startX},${startY}) to (${endX},${endY}). ` +
+          "Ensure the canvas is visible and rendered before calling dragOnCanvas()."
+      );
     }
 
     // Translate coordinates relative to canvas position
@@ -168,7 +179,10 @@ export class Layout2DPage extends BasePage {
     const box = await canvas.boundingBox();
 
     if (!box) {
-      throw new Error("Canvas bounding box not found");
+      throw new Error(
+        `Canvas bounding box not found during click at (${x},${y}). ` +
+          "Ensure the canvas is visible and rendered before calling clickOnCanvas()."
+      );
     }
 
     await this.page.mouse.click(box.x + x, box.y + y);
