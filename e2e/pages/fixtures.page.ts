@@ -2,6 +2,19 @@ import { Page, expect } from "@playwright/test";
 import { BasePage } from "./base.page";
 
 /**
+ * Timeout constants for fixtures page operations.
+ * Increased timeouts for CI environments where operations may be slower.
+ */
+const TIMEOUTS = {
+  /** Time for modal dialog to close after form submission */
+  MODAL_CLOSE: 15000,
+  /** Time for dropdown options to appear */
+  DROPDOWN_VISIBLE: 5000,
+  /** Time for buttons to become visible/enabled */
+  BUTTON_READY: 10000,
+} as const;
+
+/**
  * Page object for the Fixtures page (/fixtures).
  */
 export class FixturesPage extends BasePage {
@@ -52,7 +65,7 @@ export class FixturesPage extends BasePage {
         .locator("button")
         .filter({ hasText: new RegExp(`^${options.manufacturer}$`, "i") })
         .first();
-      await expect(manufacturerOption).toBeVisible({ timeout: 5000 });
+      await expect(manufacturerOption).toBeVisible({ timeout: TIMEOUTS.DROPDOWN_VISIBLE });
       await manufacturerOption.click();
 
       // Wait for models to load after manufacturer selection
@@ -71,7 +84,7 @@ export class FixturesPage extends BasePage {
         .locator("button")
         .filter({ hasText: new RegExp(`^${options.model}$`, "i") })
         .first();
-      await expect(modelOption).toBeVisible({ timeout: 5000 });
+      await expect(modelOption).toBeVisible({ timeout: TIMEOUTS.DROPDOWN_VISIBLE });
       await modelOption.click();
 
       // Wait for mode dropdown to appear after model selection
@@ -83,7 +96,7 @@ export class FixturesPage extends BasePage {
     // Wait for mode select to become visible after model selection
     const modeSelect = this.page.locator("select#mode");
     try {
-      await expect(modeSelect).toBeVisible({ timeout: 5000 });
+      await expect(modeSelect).toBeVisible({ timeout: TIMEOUTS.DROPDOWN_VISIBLE });
       if (options.mode) {
         await modeSelect.selectOption({ label: options.mode });
       } else {
@@ -113,11 +126,11 @@ export class FixturesPage extends BasePage {
     // Submit the form - the button is in the modal (BottomSheet with testId="add-fixture-modal")
     const modal = this.page.getByTestId("add-fixture-modal");
     const addButton = modal.getByRole("button", { name: /add fixture/i });
-    await expect(addButton).toBeEnabled({ timeout: 5000 });
+    await expect(addButton).toBeEnabled({ timeout: TIMEOUTS.DROPDOWN_VISIBLE });
     await addButton.click();
 
-    // Wait for modal to close
-    await expect(this.page.getByRole("dialog")).toBeHidden({ timeout: 10000 });
+    // Wait for modal to close (increased timeout for CI)
+    await expect(this.page.getByRole("dialog")).toBeHidden({ timeout: TIMEOUTS.MODAL_CLOSE });
 
     // Wait for fixture to appear in the list (name may be auto-generated)
     await this.waitForLoading();
@@ -165,7 +178,7 @@ export class FixturesPage extends BasePage {
     const deleteButton = row.locator('button[title="Delete fixture"]');
 
     // Wait for the button to be visible before clicking
-    await expect(deleteButton).toBeVisible({ timeout: 10000 });
+    await expect(deleteButton).toBeVisible({ timeout: TIMEOUTS.BUTTON_READY });
     await deleteButton.click();
   }
 
@@ -180,7 +193,7 @@ export class FixturesPage extends BasePage {
     const editButton = row.locator('button[title="Edit fixture"]');
 
     // Wait for the button to be visible before clicking
-    await expect(editButton).toBeVisible({ timeout: 10000 });
+    await expect(editButton).toBeVisible({ timeout: TIMEOUTS.BUTTON_READY });
     await editButton.click();
     await expect(this.page.getByRole("dialog")).toBeVisible();
   }

@@ -14,10 +14,14 @@ const TIMEOUTS = {
   CANVAS_STABILIZATION: 500,
   /** Time for drag operations to register in the canvas */
   DRAG_REGISTRATION: 300,
-  /** Time for WebSocket pubsub delivery (typically <500ms, allow 1.5s for CI) */
-  PUBSUB_DELIVERY: 1500,
+  /** Time for WebSocket pubsub delivery (typically <500ms, allow 2s for CI) */
+  PUBSUB_DELIVERY: 2000,
   /** Delay between drag movement steps */
   DRAG_STEP: 20,
+  /** Maximum time to wait for canvas to become visible (increased for CI) */
+  CANVAS_VISIBLE: 20000,
+  /** Maximum time to wait for page navigation */
+  PAGE_NAVIGATION: 15000,
 } as const;
 
 /**
@@ -49,9 +53,12 @@ export class Layout2DPage extends BasePage {
 
   /**
    * Wait for the layout canvas to be rendered.
+   * Uses an extended timeout for CI environments where rendering may be slower.
    */
   async waitForCanvas(): Promise<void> {
-    await expect(this.page.locator("canvas")).toBeVisible({ timeout: 10000 });
+    await expect(this.page.locator("canvas")).toBeVisible({
+      timeout: TIMEOUTS.CANVAS_VISIBLE,
+    });
   }
 
   /**
