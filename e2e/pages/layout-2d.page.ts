@@ -39,15 +39,25 @@ export class Layout2DPage extends BasePage {
    */
   async goto(lookId: string): Promise<void> {
     await super.goto(`/looks/${lookId}/edit`);
+    // Additional wait for CI environments where page load can be slower
+    await this.page.waitForLoadState("domcontentloaded");
   }
 
   /**
    * Switch to the 2D Layout view.
+   * In CI environments with static export, this can be slow due to
+   * bundle loading and canvas initialization.
    */
   async switchTo2DLayout(): Promise<void> {
     const layoutButton = this.page.getByRole("button", { name: /2D Layout/i });
-    await expect(layoutButton).toBeVisible({ timeout: 10000 });
+    await expect(layoutButton).toBeVisible({ timeout: TIMEOUTS.PAGE_NAVIGATION });
     await layoutButton.click();
+
+    // Wait for page to stabilize after button click before checking for canvas
+    // This helps in CI where the component mount can be slow
+    await this.page.waitForTimeout(500);
+    await this.page.waitForLoadState("domcontentloaded");
+
     await this.waitForCanvas();
   }
 
