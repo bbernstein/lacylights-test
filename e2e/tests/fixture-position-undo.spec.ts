@@ -59,14 +59,28 @@ test.describe("Fixture Position Undo/Redo", () => {
   let lookId: string;
 
   test("1. Setup: Create fixture and look", async ({ page }) => {
-    // Create fixture
+    // First, clean up any existing test data from previous runs or failed retries
+    // This ensures the test can be retried without conflicts
     const fixturesPage = new FixturesPage(page);
+    const looksPage = new LooksPage(page);
+
+    // Clean up existing look if it exists
+    await looksPage.goto();
+    if (await looksPage.hasLook(testData.look.name)) {
+      await looksPage.deleteLook(testData.look.name);
+    }
+
+    // Clean up existing fixture if it exists
     await fixturesPage.goto();
+    if (await fixturesPage.hasFixture(testData.fixture.name)) {
+      await fixturesPage.deleteFixture(testData.fixture.name);
+    }
+
+    // Now create fresh fixture
     await fixturesPage.addFixture(testData.fixture);
     expect(await fixturesPage.hasFixture(testData.fixture.name)).toBe(true);
 
     // Create look
-    const looksPage = new LooksPage(page);
     await looksPage.goto();
     await looksPage.createLook(testData.look.name, testData.look.description);
     expect(await looksPage.hasLook(testData.look.name)).toBe(true);
@@ -248,16 +262,30 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
   test("Setup: Create fixture and look for edge case tests", async ({
     page,
   }) => {
-    // Create fixture
+    // First, clean up any existing test data from previous runs or failed retries
+    // This ensures the test can be retried without conflicts
     const fixturesPage = new FixturesPage(page);
+    const looksPage = new LooksPage(page);
+
+    // Clean up existing look if it exists
+    await looksPage.goto();
+    if (await looksPage.hasLook(edgeCaseTestData.look.name)) {
+      await looksPage.deleteLook(edgeCaseTestData.look.name);
+    }
+
+    // Clean up existing fixture if it exists
     await fixturesPage.goto();
+    if (await fixturesPage.hasFixture(edgeCaseTestData.fixture.name)) {
+      await fixturesPage.deleteFixture(edgeCaseTestData.fixture.name);
+    }
+
+    // Now create fresh fixture
     await fixturesPage.addFixture(edgeCaseTestData.fixture);
     expect(await fixturesPage.hasFixture(edgeCaseTestData.fixture.name)).toBe(
       true
     );
 
     // Create look
-    const looksPage = new LooksPage(page);
     await looksPage.goto();
     await looksPage.createLook(
       edgeCaseTestData.look.name,
