@@ -1,6 +1,7 @@
-import { test, expect, Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { FixturesPage } from "../pages/fixtures.page";
 import { LooksPage } from "../pages/looks.page";
+import { Layout2DPage } from "../pages/layout-2d.page";
 import { setupCiProxy } from "../helpers/ci-proxy";
 
 /**
@@ -17,165 +18,6 @@ import { setupCiProxy } from "../helpers/ci-proxy";
  * 4. Save the position
  * 5. Undo (Cmd+Z) and verify position is restored
  */
-
-/**
- * Page object for the 2D Layout view within the Look Editor.
- */
-class Layout2DPage {
-  readonly page: Page;
-
-  constructor(page: Page) {
-    this.page = page;
-  }
-
-  /**
-   * Navigate directly to a look's edit page in 2D layout view.
-   */
-  async goto(lookId: string): Promise<void> {
-    await this.page.goto(`/looks/${lookId}/edit`);
-    await this.page.waitForLoadState("domcontentloaded");
-    await this.waitForLoading();
-  }
-
-  /**
-   * Wait for loading to complete.
-   */
-  async waitForLoading(): Promise<void> {
-    await this.page.waitForFunction(() => {
-      const body = document.body.textContent || "";
-      return !body.includes("Loading...");
-    }, { timeout: 30000 });
-  }
-
-  /**
-   * Switch to the 2D Layout view.
-   */
-  async switchTo2DLayout(): Promise<void> {
-    // Click the 2D Layout button (it's a button, not a tab)
-    const layoutButton = this.page.getByRole("button", { name: /2D Layout/i });
-    await expect(layoutButton).toBeVisible({ timeout: 10000 });
-    await layoutButton.click();
-
-    // Wait for the canvas to be visible
-    await this.waitForCanvas();
-  }
-
-  /**
-   * Wait for the layout canvas to be rendered.
-   */
-  async waitForCanvas(): Promise<void> {
-    await expect(this.page.locator("canvas")).toBeVisible({ timeout: 10000 });
-  }
-
-  /**
-   * Get the canvas element.
-   */
-  getCanvas() {
-    return this.page.locator("canvas");
-  }
-
-  /**
-   * Check if the Save Layout button is enabled (indicating unsaved changes).
-   */
-  async hasPendingChanges(): Promise<boolean> {
-    const saveButton = this.page.getByRole("button", { name: /Save Layout/i });
-    const isDisabled = await saveButton.isDisabled();
-    return !isDisabled;
-  }
-
-  /**
-   * Save the current layout positions.
-   */
-  async saveLayout(): Promise<void> {
-    const saveButton = this.page.getByRole("button", { name: /Save Layout/i });
-    await expect(saveButton).toBeEnabled({ timeout: 5000 });
-    await saveButton.click();
-
-    // Wait for save to complete (button becomes disabled)
-    await expect(saveButton).toBeDisabled({ timeout: 10000 });
-  }
-
-  /**
-   * Perform undo via keyboard shortcut.
-   */
-  async undo(): Promise<void> {
-    // Use Meta+Z for macOS, Control+Z for others
-    const modifier = process.platform === "darwin" ? "Meta" : "Control";
-    await this.page.keyboard.press(`${modifier}+z`);
-
-    // Wait for the undo operation to complete
-    await this.page.waitForTimeout(500);
-  }
-
-  /**
-   * Perform redo via keyboard shortcut.
-   */
-  async redo(): Promise<void> {
-    const modifier = process.platform === "darwin" ? "Meta" : "Control";
-    await this.page.keyboard.press(`${modifier}+Shift+z`);
-
-    // Wait for the redo operation to complete
-    await this.page.waitForTimeout(500);
-  }
-
-  /**
-   * Drag a fixture on the canvas by simulating mouse events.
-   * Since fixtures are rendered on canvas, we need to use coordinates.
-   *
-   * @param startX - Starting X coordinate (in viewport)
-   * @param startY - Starting Y coordinate (in viewport)
-   * @param endX - Ending X coordinate (in viewport)
-   * @param endY - Ending Y coordinate (in viewport)
-   */
-  async dragOnCanvas(
-    startX: number,
-    startY: number,
-    endX: number,
-    endY: number
-  ): Promise<void> {
-    const canvas = this.getCanvas();
-    const box = await canvas.boundingBox();
-
-    if (!box) {
-      throw new Error("Canvas bounding box not found");
-    }
-
-    // Translate coordinates relative to canvas position
-    const absStartX = box.x + startX;
-    const absStartY = box.y + startY;
-    const absEndX = box.x + endX;
-    const absEndY = box.y + endY;
-
-    // Perform drag operation
-    await this.page.mouse.move(absStartX, absStartY);
-    await this.page.mouse.down();
-
-    // Move in steps to trigger drag detection
-    const steps = 5;
-    for (let i = 1; i <= steps; i++) {
-      const x = absStartX + ((absEndX - absStartX) * i) / steps;
-      const y = absStartY + ((absEndY - absStartY) * i) / steps;
-      await this.page.mouse.move(x, y);
-      await this.page.waitForTimeout(20);
-    }
-
-    await this.page.mouse.up();
-  }
-
-  /**
-   * Click on a specific position on the canvas.
-   */
-  async clickOnCanvas(x: number, y: number): Promise<void> {
-    const canvas = this.getCanvas();
-    const box = await canvas.boundingBox();
-
-    if (!box) {
-      throw new Error("Canvas bounding box not found");
-    }
-
-    await this.page.mouse.click(box.x + x, box.y + y);
-  }
-}
 
 test.describe("Fixture Position Undo/Redo", () => {
   test.describe.configure({ mode: "serial" });
@@ -243,15 +85,12 @@ test.describe("Fixture Position Undo/Redo", () => {
     await layout2D.switchTo2DLayout();
 
     // Wait for canvas to stabilize
-    await page.waitForTimeout(500);
+    await layout2D.waitForCanvasStabilization();
 
     // Drag from a position to another (assuming fixture is somewhere in the canvas)
     // The exact coordinates depend on the auto-layout positioning
     // We'll drag in the center area of the canvas
     await layout2D.dragOnCanvas(200, 200, 300, 250);
-
-    // Wait for the drag to register
-    await page.waitForTimeout(300);
 
     // Check if there are pending changes (save button should be enabled if we hit a fixture)
     const hasPending = await layout2D.hasPendingChanges();
@@ -260,7 +99,10 @@ test.describe("Fixture Position Undo/Redo", () => {
     if (hasPending) {
       await layout2D.saveLayout();
       // Verify save completed (button disabled again)
-      expect(await layout2D.hasPendingChanges()).toBe(false);
+      expect(
+        await layout2D.hasPendingChanges(),
+        "Save button should be disabled after saving"
+      ).toBe(false);
     }
   });
 
@@ -270,22 +112,24 @@ test.describe("Fixture Position Undo/Redo", () => {
     await layout2D.switchTo2DLayout();
 
     // Wait for canvas to stabilize
-    await page.waitForTimeout(500);
+    await layout2D.waitForCanvasStabilization();
 
     // Try different coordinates to hit a fixture
     // First click to select, then drag
     await layout2D.clickOnCanvas(250, 250);
-    await page.waitForTimeout(200);
+    await layout2D.waitForCanvasStabilization();
 
     // Drag to a new position
     await layout2D.dragOnCanvas(250, 250, 400, 350);
-    await page.waitForTimeout(300);
 
     const hasPending = await layout2D.hasPendingChanges();
 
     if (hasPending) {
       await layout2D.saveLayout();
-      expect(await layout2D.hasPendingChanges()).toBe(false);
+      expect(
+        await layout2D.hasPendingChanges(),
+        "Save button should be disabled after saving"
+      ).toBe(false);
     }
   });
 
@@ -295,21 +139,24 @@ test.describe("Fixture Position Undo/Redo", () => {
     await layout2D.switchTo2DLayout();
 
     // Wait for canvas to stabilize
-    await page.waitForTimeout(500);
+    await layout2D.waitForCanvasStabilization();
 
     // Perform undo
     await layout2D.undo();
 
     // Wait for the pubsub subscription to deliver the update
     // and for the canvas to re-render
-    await page.waitForTimeout(1500);
+    await layout2D.waitForPubsubDelivery();
 
     // The UI should have updated via the fixtureDataChanged subscription
     // We can verify by checking that no save is needed (positions match DB)
     // Since undo restores the DB state and the subscription triggers a refetch,
     // the local state should match the DB, resulting in no pending changes
     const hasPending = await layout2D.hasPendingChanges();
-    expect(hasPending).toBe(false);
+    expect(
+      hasPending,
+      "Save button should be disabled after undo (positions match DB)"
+    ).toBe(false);
   });
 
   test("6. Redo position change", async ({ page }) => {
@@ -318,17 +165,20 @@ test.describe("Fixture Position Undo/Redo", () => {
     await layout2D.switchTo2DLayout();
 
     // Wait for canvas to stabilize
-    await page.waitForTimeout(500);
+    await layout2D.waitForCanvasStabilization();
 
     // Perform redo
     await layout2D.redo();
 
     // Wait for pubsub and canvas update
-    await page.waitForTimeout(1500);
+    await layout2D.waitForPubsubDelivery();
 
     // After redo, positions should still match DB (redo was applied to DB)
     const hasPending = await layout2D.hasPendingChanges();
-    expect(hasPending).toBe(false);
+    expect(
+      hasPending,
+      "Save button should be disabled after redo (positions match DB)"
+    ).toBe(false);
   });
 
   test("7. Cleanup: Delete test data", async ({ page }) => {
