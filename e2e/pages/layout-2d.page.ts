@@ -3,10 +3,6 @@ import { BasePage } from "./base.page";
 
 /**
  * Timeout constants for canvas operations.
- * Documented reasoning for each timeout value.
- */
-/**
- * Timeout constants for canvas operations.
  *
  * Note: These fixed timeouts are intentional and appropriate for canvas-based E2E tests.
  * Unlike DOM elements that can be polled for state changes, the canvas rendering pipeline
