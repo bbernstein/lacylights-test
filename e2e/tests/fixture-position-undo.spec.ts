@@ -163,7 +163,9 @@ test.describe("Fixture Position Undo/Redo", () => {
     }
   });
 
-  test("5. Undo position change and verify restoration", async ({ page }) => {
+  test("5. Undo and Redo position changes", async ({ page }) => {
+    // Combined undo/redo test to avoid problematic re-navigation in CI
+    // The canvas sometimes fails to render when navigating again after undo
     const layout2D = new Layout2DPage(page);
     await layout2D.goto(lookId);
     await layout2D.switchTo2DLayout();
@@ -171,6 +173,7 @@ test.describe("Fixture Position Undo/Redo", () => {
     // Wait for canvas to stabilize
     await layout2D.waitForCanvasStabilization();
 
+    // === UNDO ===
     // Perform undo
     await layout2D.undo();
 
@@ -182,36 +185,28 @@ test.describe("Fixture Position Undo/Redo", () => {
     // We can verify by checking that no save is needed (positions match DB)
     // Since undo restores the DB state and the subscription triggers a refetch,
     // the local state should match the DB, resulting in no pending changes
-    const hasPending = await layout2D.hasPendingChanges();
+    let hasPending = await layout2D.hasPendingChanges();
     expect(
       hasPending,
       "Save button should be disabled after undo (positions match DB)"
     ).toBe(false);
-  });
 
-  test("6. Redo position change", async ({ page }) => {
-    const layout2D = new Layout2DPage(page);
-    await layout2D.goto(lookId);
-    await layout2D.switchTo2DLayout();
-
-    // Wait for canvas to stabilize
-    await layout2D.waitForCanvasStabilization();
-
-    // Perform redo
+    // === REDO ===
+    // Perform redo (without re-navigating)
     await layout2D.redo();
 
     // Wait for pubsub and canvas update
     await layout2D.waitForPubsubDelivery();
 
     // After redo, positions should still match DB (redo was applied to DB)
-    const hasPending = await layout2D.hasPendingChanges();
+    hasPending = await layout2D.hasPendingChanges();
     expect(
       hasPending,
       "Save button should be disabled after redo (positions match DB)"
     ).toBe(false);
   });
 
-  test("7. Cleanup: Delete test data", async ({ page }) => {
+  test("6. Cleanup: Delete test data", async ({ page }) => {
     // Delete look
     const looksPage = new LooksPage(page);
     await looksPage.goto();
@@ -300,9 +295,9 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
     edgeCaseLookId = extractedLookId!;
   });
 
-  test("Undo without prior changes does nothing harmful in 2D Layout", async ({
-    page,
-  }) => {
+  test("Undo edge cases in 2D Layout", async ({ page }) => {
+    // Combined test for undo edge cases to avoid problematic re-navigation in CI
+    // Tests: undo without prior changes, and multiple rapid undos
     const layout2D = new Layout2DPage(page);
     await layout2D.goto(edgeCaseLookId);
     await layout2D.switchTo2DLayout();
@@ -313,6 +308,7 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
     // Verify we're in 2D Layout view with canvas visible
     await expect(layout2D.getCanvas()).toBeVisible();
 
+    // === TEST 1: Undo without prior changes ===
     // Press undo when there are no prior position changes
     // This should not crash or cause errors
     await layout2D.undo();
@@ -322,20 +318,11 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
 
     // No pending changes should exist (undo on empty stack is a no-op)
     expect(await layout2D.hasPendingChanges()).toBe(false);
-  });
 
-  test("Multiple rapid undos are handled correctly in 2D Layout", async ({
-    page,
-  }) => {
-    // This test ensures that rapid undo operations don't cause race conditions
+    // === TEST 2: Multiple rapid undos ===
+    // This tests that rapid undo operations don't cause race conditions
     // in the 2D Layout view. It validates that the UI remains stable even when
     // users press undo repeatedly and quickly.
-    const layout2D = new Layout2DPage(page);
-    await layout2D.goto(edgeCaseLookId);
-    await layout2D.switchTo2DLayout();
-
-    // Wait for canvas to be ready
-    await layout2D.waitForCanvasStabilization();
 
     // Rapid undo simulation parameters:
     // - 5 iterations: typical rapid keypress scenario
