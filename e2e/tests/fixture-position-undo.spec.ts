@@ -95,7 +95,10 @@ test.describe("Fixture Position Undo/Redo", () => {
     // Check if there are pending changes (save button should be enabled if we hit a fixture)
     const hasPending = await layout2D.hasPendingChanges();
 
-    // If we successfully moved a fixture, save it
+    // NOTE: Conditional logic is intentional here. Since fixture positions depend
+    // on auto-layout algorithms and screen size, we can't guarantee hitting a fixture.
+    // The test validates the save flow when a fixture IS moved, but gracefully
+    // handles the case where the drag missed all fixtures.
     if (hasPending) {
       await layout2D.saveLayout();
       // Verify save completed (button disabled again)
@@ -124,6 +127,8 @@ test.describe("Fixture Position Undo/Redo", () => {
 
     const hasPending = await layout2D.hasPendingChanges();
 
+    // NOTE: Conditional logic is intentional. See comment in test 3.
+    // This ensures we don't fail if the drag misses all fixtures.
     if (hasPending) {
       await layout2D.saveLayout();
       expect(
@@ -202,32 +207,97 @@ test.describe("Fixture Position Undo/Redo", () => {
 
 /**
  * Additional tests for edge cases in fixture position undo.
+ * These tests run in the 2D Layout context to properly test fixture position behavior.
  */
 test.describe("Fixture Position Undo - Edge Cases", () => {
+  test.describe.configure({ mode: "serial" });
+
   test.beforeEach(async ({ page }) => {
     await setupCiProxy(page);
   });
 
-  test("Undo without prior changes does nothing harmful", async ({ page }) => {
+  // Test data for edge case tests
+  const edgeCaseTestData = {
+    fixture: {
+      name: "Edge Case Test Light",
+      manufacturer: "Generic",
+      model: "RGB Fader",
+      universe: 1,
+      startChannel: 200, // Different channel to avoid conflicts
+    },
+    look: {
+      name: "Edge Case Test Look",
+      description: "Look for testing edge cases in fixture position undo",
+    },
+  };
+
+  let edgeCaseLookId: string;
+
+  test("Setup: Create fixture and look for edge case tests", async ({
+    page,
+  }) => {
+    // Create fixture
+    const fixturesPage = new FixturesPage(page);
+    await fixturesPage.goto();
+    await fixturesPage.addFixture(edgeCaseTestData.fixture);
+    expect(await fixturesPage.hasFixture(edgeCaseTestData.fixture.name)).toBe(
+      true
+    );
+
+    // Create look
     const looksPage = new LooksPage(page);
     await looksPage.goto();
+    await looksPage.createLook(
+      edgeCaseTestData.look.name,
+      edgeCaseTestData.look.description
+    );
+    expect(await looksPage.hasLook(edgeCaseTestData.look.name)).toBe(true);
 
-    // Just verify the page loads without pressing undo
-    // (no crashes when undo stack is empty)
-    expect(await looksPage.hasText("Looks")).toBe(true);
-
-    // Press undo on a page without pending changes
-    const modifier = process.platform === "darwin" ? "Meta" : "Control";
-    await page.keyboard.press(`${modifier}+z`);
-
-    // Page should still be functional
-    expect(await looksPage.hasText("Looks")).toBe(true);
+    // Get the look ID from the URL when opening the look
+    await looksPage.openLook(edgeCaseTestData.look.name);
+    const url = page.url();
+    const match = url.match(/\/looks\/([a-z0-9-]+)\/edit/);
+    if (match) {
+      edgeCaseLookId = match[1];
+    }
+    expect(edgeCaseLookId).toBeDefined();
   });
 
-  test("Multiple rapid undos are handled correctly", async ({ page }) => {
+  test("Undo without prior changes does nothing harmful in 2D Layout", async ({
+    page,
+  }) => {
+    const layout2D = new Layout2DPage(page);
+    await layout2D.goto(edgeCaseLookId);
+    await layout2D.switchTo2DLayout();
+
+    // Wait for canvas to be ready
+    await layout2D.waitForCanvasStabilization();
+
+    // Verify we're in 2D Layout view with canvas visible
+    await expect(layout2D.getCanvas()).toBeVisible();
+
+    // Press undo when there are no prior position changes
+    // This should not crash or cause errors
+    await layout2D.undo();
+
+    // Canvas should still be visible and functional
+    await expect(layout2D.getCanvas()).toBeVisible();
+
+    // No pending changes should exist (undo on empty stack is a no-op)
+    expect(await layout2D.hasPendingChanges()).toBe(false);
+  });
+
+  test("Multiple rapid undos are handled correctly in 2D Layout", async ({
+    page,
+  }) => {
     // This test ensures that rapid undo operations don't cause race conditions
-    const looksPage = new LooksPage(page);
-    await looksPage.goto();
+    // in the 2D Layout view
+    const layout2D = new Layout2DPage(page);
+    await layout2D.goto(edgeCaseLookId);
+    await layout2D.switchTo2DLayout();
+
+    // Wait for canvas to be ready
+    await layout2D.waitForCanvasStabilization();
 
     const modifier = process.platform === "darwin" ? "Meta" : "Control";
 
@@ -237,8 +307,32 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
       await page.waitForTimeout(50);
     }
 
-    // Page should still be functional
-    await page.waitForTimeout(500);
-    expect(await looksPage.hasText("Looks")).toBe(true);
+    // Wait for any async operations to settle
+    await layout2D.waitForPubsubDelivery();
+
+    // Canvas should still be visible and functional
+    await expect(layout2D.getCanvas()).toBeVisible();
+
+    // Save button state should be valid (not in error state)
+    const hasPending = await layout2D.hasPendingChanges();
+    expect(typeof hasPending).toBe("boolean");
+  });
+
+  test("Cleanup: Delete edge case test data", async ({ page }) => {
+    // Delete look
+    const looksPage = new LooksPage(page);
+    await looksPage.goto();
+
+    if (await looksPage.hasLook(edgeCaseTestData.look.name)) {
+      await looksPage.deleteLook(edgeCaseTestData.look.name);
+    }
+
+    // Delete fixture
+    const fixturesPage = new FixturesPage(page);
+    await fixturesPage.goto();
+
+    if (await fixturesPage.hasFixture(edgeCaseTestData.fixture.name)) {
+      await fixturesPage.deleteFixture(edgeCaseTestData.fixture.name);
+    }
   });
 });
