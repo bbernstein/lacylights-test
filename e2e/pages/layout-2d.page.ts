@@ -16,8 +16,6 @@ const TIMEOUTS = {
   DRAG_REGISTRATION: 300,
   /** Time for WebSocket pubsub delivery (typically <500ms, allow 1.5s for CI) */
   PUBSUB_DELIVERY: 1500,
-  /** Small delay between rapid sequential actions */
-  RAPID_ACTION: 50,
   /** Delay between drag movement steps */
   DRAG_STEP: 20,
 } as const;

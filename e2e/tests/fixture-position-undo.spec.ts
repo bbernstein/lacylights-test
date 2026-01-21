@@ -309,13 +309,15 @@ test.describe("Fixture Position Undo - Edge Cases", () => {
     // Wait for canvas to be ready
     await layout2D.waitForCanvasStabilization();
 
-    const modifier = process.platform === "darwin" ? "Meta" : "Control";
-
     // Rapid undo simulation parameters:
     // - 5 iterations: typical rapid keypress scenario
     // - 50ms delay: faster than human but allows event processing
+    // NOTE: We use inline keyboard logic instead of layout2D.undo() because
+    // that method waits 500ms after each undo for canvas stabilization.
+    // For this rapid undo test, we intentionally use shorter delays.
     const RAPID_UNDO_COUNT = 5;
     const RAPID_UNDO_DELAY_MS = 50;
+    const modifier = process.platform === "darwin" ? "Meta" : "Control";
 
     // Press undo multiple times rapidly
     for (let i = 0; i < RAPID_UNDO_COUNT; i++) {
