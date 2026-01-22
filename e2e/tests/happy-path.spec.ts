@@ -252,21 +252,22 @@ test.describe("LacyLights Happy Path", () => {
     const editorPage = new LookEditorPage(page);
     await editorPage.waitForEditor();
 
-    // Add fixtures to the look
+    // Try to add fixtures to the look (they may already be there from previous runs)
     await editorPage.openAddFixturesPanel();
     await editorPage.addFixtureToLook(testData.fixtures[0].name);
     await editorPage.addFixtureToLook(testData.fixtures[1].name);
 
-    // Save the look with fixtures
+    // Save the look (saves any changes or just confirms current state)
     await editorPage.save();
 
-    // Verify fixtures were added
-    expect(await editorPage.getFixtureCount()).toBeGreaterThanOrEqual(2);
+    // Verify fixtures are in the look (either added or already there)
+    expect(await editorPage.hasFixtureInLook(testData.fixtures[0].name)).toBe(true);
+    expect(await editorPage.hasFixtureInLook(testData.fixtures[1].name)).toBe(true);
 
     // Go back to looks list
     await editorPage.goBack();
 
-    // Now add the same fixtures to "Warm Wash" look
+    // Now ensure the same fixtures are in "Warm Wash" look
     await looksPage.openLook(testData.looks[2].name);
     await editorPage.waitForEditor();
 
@@ -275,16 +276,7 @@ test.describe("LacyLights Happy Path", () => {
     await editorPage.addFixtureToLook(testData.fixtures[1].name);
     await editorPage.save();
 
-    // Go back to looks list
-    await editorPage.goBack();
-
-    // Open "Full Bright" again to copy fixtures to "Warm Wash"
-    await looksPage.openLook(testData.looks[0].name);
-    await editorPage.waitForEditor();
-
-    // Select a fixture to enable the copy button
-    // On desktop, we need to go to layout mode and select fixtures
-    // For now, let's verify the fixtures are in the look
+    // Verify fixtures are in this look too
     expect(await editorPage.hasFixtureInLook(testData.fixtures[0].name)).toBe(true);
     expect(await editorPage.hasFixtureInLook(testData.fixtures[1].name)).toBe(true);
 

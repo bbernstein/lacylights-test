@@ -182,7 +182,7 @@ export class LookEditorPage extends BasePage {
    */
   async goBack(): Promise<void> {
     await this.page.goBack();
-    await this.page.waitForURL(/\/looks$/);
+    await this.page.waitForURL(/\/looks\/?$/);
   }
 
   /**
@@ -198,12 +198,22 @@ export class LookEditorPage extends BasePage {
   /**
    * Add a fixture to the look by name.
    * Assumes the Add Fixtures panel is open.
+   * @returns true if the fixture was added, false if already in look or not available
    */
-  async addFixtureToLook(fixtureName: string): Promise<void> {
+  async addFixtureToLook(fixtureName: string): Promise<boolean> {
+    // Check if all fixtures are already in the look
+    const noFixturesMessage = this.page.getByText("All project fixtures are already in this look");
+    if (await noFixturesMessage.isVisible({ timeout: 1000 }).catch(() => false)) {
+      return false; // No fixtures available to add
+    }
+
     // Find and check the fixture checkbox in the Available Fixtures list
     const fixtureLabel = this.page.locator(`label:has-text("${fixtureName}")`);
-    await expect(fixtureLabel).toBeVisible({ timeout: 5000 });
-    await fixtureLabel.click();
+    if (await fixtureLabel.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await fixtureLabel.click();
+      return true;
+    }
+    return false; // Fixture not found (might already be in look)
   }
 
   /**
