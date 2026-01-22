@@ -296,12 +296,12 @@ export class LookEditorPage extends BasePage {
 
   /**
    * Select a fixture in the look editor by clicking on it.
-   * This is used for layout mode where fixtures are displayed on a canvas.
+   * In channels mode, fixtures are displayed as cards/rows with headers.
    * @param fixtureName - Name of the fixture to select
    */
   async selectFixtureInEditor(fixtureName: string): Promise<void> {
-    // In channels mode, fixtures are in cards/rows. Click on the fixture header.
-    // Use regex to match fixture name at the start (heading includes mode info like "Generic RGB Fader • U1:1")
+    // Click on the fixture header card. Use regex to match fixture name at the start
+    // (heading includes mode info like "Generic RGB Fader • U1:1")
     const fixtureCard = this.page.getByRole("heading", { name: new RegExp(`^${fixtureName}`), level: 4 }).first();
     await expect(fixtureCard).toBeVisible({ timeout: 5000 });
     await fixtureCard.click();

@@ -242,7 +242,7 @@ test.describe("LacyLights Happy Path", () => {
     await looksPage.activateLook(testData.looks[2].name);
   });
 
-  test("7. Add fixtures to looks and copy between looks", async ({ page }) => {
+  test("7. Add fixtures to looks", async ({ page }) => {
     const looksPage = new LooksPage(page);
     await looksPage.goto();
 
