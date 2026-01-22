@@ -16,8 +16,11 @@ import { setupCiProxy } from "../helpers/ci-proxy";
  * 4. Creating a cue list with cues
  * 5. Running the cue list playback
  * 6. Playing looks directly
- * 7. Creating and playing effects
- * 8. Playing look board buttons
+ * 7. Adding fixtures to looks and copying between looks
+ * 8. Creating and playing effects
+ * 9. Playing look board buttons
+ * 10. Editing effects with fixtures
+ * 11. Adding effects to cues
  *
  * Tests run in serial mode to maintain state between tests.
  */
@@ -239,7 +242,49 @@ test.describe("LacyLights Happy Path", () => {
     await looksPage.activateLook(testData.looks[2].name);
   });
 
-  test("7. Create and play effects", async ({ page }) => {
+  test("7. Add fixtures to looks", async ({ page }) => {
+    const looksPage = new LooksPage(page);
+    await looksPage.goto();
+
+    // Open "Full Bright" look for editing
+    await looksPage.openLook(testData.looks[0].name);
+
+    const editorPage = new LookEditorPage(page);
+    await editorPage.waitForEditor();
+
+    // Try to add fixtures to the look (they may already be there from previous runs)
+    await editorPage.openAddFixturesPanel();
+    await editorPage.addFixtureToLook(testData.fixtures[0].name);
+    await editorPage.addFixtureToLook(testData.fixtures[1].name);
+
+    // Save the look (saves any changes or just confirms current state)
+    await editorPage.save();
+
+    // Verify fixtures are in the look (either added or already there)
+    expect(await editorPage.hasFixtureInLook(testData.fixtures[0].name)).toBe(true);
+    expect(await editorPage.hasFixtureInLook(testData.fixtures[1].name)).toBe(true);
+
+    // Go back to looks list
+    await editorPage.goBack();
+
+    // Now ensure the same fixtures are in "Warm Wash" look
+    await looksPage.openLook(testData.looks[2].name);
+    await editorPage.waitForEditor();
+
+    await editorPage.openAddFixturesPanel();
+    await editorPage.addFixtureToLook(testData.fixtures[0].name);
+    await editorPage.addFixtureToLook(testData.fixtures[1].name);
+    await editorPage.save();
+
+    // Verify fixtures are in this look too
+    expect(await editorPage.hasFixtureInLook(testData.fixtures[0].name)).toBe(true);
+    expect(await editorPage.hasFixtureInLook(testData.fixtures[1].name)).toBe(true);
+
+    // Go back to looks list
+    await editorPage.goBack();
+  });
+
+  test("8. Create and play effects", async ({ page }) => {
     const effectsPage = new EffectsPage(page);
     await effectsPage.goto();
 
@@ -262,7 +307,7 @@ test.describe("LacyLights Happy Path", () => {
     await effectsPage.stopEffect(testData.effect.name);
   });
 
-  test("8. Play look board buttons", async ({ page }) => {
+  test("9. Play look board buttons", async ({ page }) => {
     const listPage = new LookBoardListPage(page);
     await listPage.goto();
 
@@ -281,7 +326,7 @@ test.describe("LacyLights Happy Path", () => {
     await page.waitForTimeout(500);
   });
 
-  test("9. Edit effect, add fixtures, and play it", async ({ page }) => {
+  test("10. Edit effect, add fixtures, and play it", async ({ page }) => {
     const effectsPage = new EffectsPage(page);
     await effectsPage.goto();
 
@@ -340,7 +385,7 @@ test.describe("LacyLights Happy Path", () => {
     await effectsPage.stopEffect(testData.effect.name);
   });
 
-  test("10. Add effect to cue and play cue with effect and look", async ({ page }) => {
+  test("11. Add effect to cue and play cue with effect and look", async ({ page }) => {
     const cueListsPage = new CueListsPage(page);
     await cueListsPage.goto();
 

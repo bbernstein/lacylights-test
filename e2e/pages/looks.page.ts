@@ -182,6 +182,139 @@ export class LookEditorPage extends BasePage {
    */
   async goBack(): Promise<void> {
     await this.page.goBack();
-    await this.page.waitForURL(/\/looks$/);
+    await this.page.waitForURL(/\/looks\/?$/);
+  }
+
+  /**
+   * Open the "Add Fixtures" panel to add fixtures to the look.
+   */
+  async openAddFixturesPanel(): Promise<void> {
+    // Click "Add Fixtures" button to show available fixtures panel
+    await this.page.getByRole("button", { name: /add fixtures/i }).click();
+    // Wait for the panel to appear
+    await expect(this.page.getByText("Available Fixtures")).toBeVisible({ timeout: 5000 });
+  }
+
+  /**
+   * Add a fixture to the look by name.
+   * Assumes the Add Fixtures panel is open.
+   * @returns true if the fixture was added, false if already in look or not available
+   */
+  async addFixtureToLook(fixtureName: string): Promise<boolean> {
+    // Check if all fixtures are already in the look
+    const noFixturesMessage = this.page.getByText("All project fixtures are already in this look");
+    if (await noFixturesMessage.isVisible({ timeout: 1000 }).catch(() => false)) {
+      return false; // No fixtures available to add
+    }
+
+    // Find and check the fixture checkbox in the Available Fixtures list using exact label match
+    const fixtureLabel = this.page.getByLabel(fixtureName, { exact: true });
+    if (await fixtureLabel.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await fixtureLabel.click();
+      return true;
+    }
+    return false; // Fixture not found (might already be in look)
+  }
+
+  /**
+   * Get the count of fixtures in the look.
+   */
+  async getFixtureCount(): Promise<number> {
+    const countText = await this.page.locator("text=/Total fixtures in look: \\d+/").textContent();
+    if (!countText) return 0;
+    const match = countText.match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
+  }
+
+  /**
+   * Check if the "Copy to Looks" button is visible.
+   * This button appears when fixtures are selected in the editor.
+   */
+  async isCopyToLooksButtonVisible(): Promise<boolean> {
+    // Use title selector for consistent behavior with openCopyToLooksModal
+    const button = this.page.locator('button[title="Copy selected fixtures to other looks"]');
+    return await button.isVisible();
+  }
+
+  /**
+   * Click the "Copy to Looks" button to open the copy modal.
+   * The button appears when fixtures are selected in the editor.
+   */
+  async openCopyToLooksModal(): Promise<void> {
+    // Click the "Copy to Looks" button using title selector (consistent with isCopyToLooksButtonVisible)
+    const button = this.page.locator('button[title="Copy selected fixtures to other looks"]');
+    await expect(button).toBeVisible({ timeout: 5000 });
+    await button.click();
+    // Wait for the modal to appear
+    await expect(this.page.getByTestId("copy-fixtures-to-looks-modal")).toBeVisible({ timeout: 5000 });
+  }
+
+  /**
+   * Select a target look in the Copy to Looks modal.
+   * @param lookName - Name of the look to select as target
+   */
+  async selectTargetLook(lookName: string): Promise<void> {
+    const modal = this.page.getByTestId("copy-fixtures-to-looks-modal");
+    // Click the checkbox associated with the look name to select the target look
+    const lookCheckbox = modal.getByRole("checkbox", { name: lookName });
+    await expect(lookCheckbox).toBeVisible({ timeout: 5000 });
+    await lookCheckbox.click();
+  }
+
+  /**
+   * Get the count of selected target looks in the modal.
+   */
+  async getSelectedTargetCount(): Promise<number> {
+    const modal = this.page.getByTestId("copy-fixtures-to-looks-modal");
+    const selectedText = await modal.locator("text=/\\d+ selected/").textContent();
+    if (!selectedText) return 0;
+    const match = selectedText.match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
+  }
+
+  /**
+   * Execute the copy operation by clicking the Copy button in the modal.
+   */
+  async confirmCopyToLooks(): Promise<void> {
+    const modal = this.page.getByTestId("copy-fixtures-to-looks-modal");
+    // Find the Copy button (it says "Copy to X Looks" or similar)
+    const copyButton = modal.getByRole("button", { name: /copy to.*look/i });
+    await expect(copyButton).toBeEnabled({ timeout: 5000 });
+    await copyButton.click();
+    // Wait for modal to close (indicates success)
+    await expect(modal).toBeHidden({ timeout: 10000 });
+  }
+
+  /**
+   * Cancel and close the Copy to Looks modal.
+   */
+  async cancelCopyToLooks(): Promise<void> {
+    const modal = this.page.getByTestId("copy-fixtures-to-looks-modal");
+    await modal.getByRole("button", { name: /cancel/i }).click();
+    await expect(modal).toBeHidden({ timeout: 5000 });
+  }
+
+  /**
+   * Select a fixture in the look editor by clicking on it.
+   * In channels mode, fixtures are displayed as cards/rows with headers.
+   * @param fixtureName - Name of the fixture to select
+   */
+  async selectFixtureInEditor(fixtureName: string): Promise<void> {
+    // Click on the fixture header card. Use regex to match fixture name at the start
+    // (heading includes mode info like "Generic RGB Fader • U1:1")
+    const fixtureCard = this.page.getByRole("heading", { name: new RegExp(`^${fixtureName}`), level: 4 }).first();
+    await expect(fixtureCard).toBeVisible({ timeout: 5000 });
+    await fixtureCard.click();
+  }
+
+  /**
+   * Check if a fixture is in the look by name.
+   * @param fixtureName - Name of the fixture to check
+   */
+  async hasFixtureInLook(fixtureName: string): Promise<boolean> {
+    // Use getByRole with regex to match fixture name at the start and check visibility
+    // The heading includes mode info like "Generic RGB Fader • U1:1" after the fixture name
+    const fixtureCard = this.page.getByRole("heading", { name: new RegExp(`^${fixtureName}`), level: 4 }).first();
+    return await fixtureCard.isVisible();
   }
 }
