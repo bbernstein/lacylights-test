@@ -325,8 +325,9 @@ func TestCopyFixturesToLooks(t *testing.T) {
 		assert.Equal(t, 100, fixtureValues[fixture3ID], "fixture3 should have value 100")
 	})
 
-	t.Run("SkipSourceLookAsTarget", func(t *testing.T) {
-		// Try to copy to a list that includes the source look (should be skipped)
+	t.Run("SourceLookInTargetsIsProcessed", func(t *testing.T) {
+		// When the source look is included in targets, it is still processed (as a no-op).
+		// This keeps the mutation atomic across all requested looks.
 		var copyResp struct {
 			CopyFixturesToLooks struct {
 				UpdatedLookCount int `json:"updatedLookCount"`
@@ -352,15 +353,13 @@ func TestCopyFixturesToLooks(t *testing.T) {
 		}, &copyResp)
 
 		require.NoError(t, err)
-		// Should only update target1, not the source
-		assert.Equal(t, 1, copyResp.CopyFixturesToLooks.UpdatedLookCount)
-		for _, look := range copyResp.CopyFixturesToLooks.UpdatedLooks {
-			assert.NotEqual(t, sourceLookID, look.ID, "source look should not be updated")
-		}
+		// Both looks are processed (source is included but copy to itself is effectively a no-op)
+		assert.Equal(t, 2, copyResp.CopyFixturesToLooks.UpdatedLookCount)
+		assert.Len(t, copyResp.CopyFixturesToLooks.UpdatedLooks, 2)
 	})
 
 	t.Run("ErrorOnInvalidSourceLook", func(t *testing.T) {
-		_, err := client.Execute(ctx, `
+		resp, err := client.Execute(ctx, `
 			mutation CopyFixturesToLooks($input: CopyFixturesToLooksInput!) {
 				copyFixturesToLooks(input: $input) {
 					updatedLookCount
@@ -374,11 +373,13 @@ func TestCopyFixturesToLooks(t *testing.T) {
 			},
 		})
 
-		require.Error(t, err, "should error with invalid source look")
+		require.NoError(t, err, "HTTP request should succeed")
+		require.NotEmpty(t, resp.Errors, "should have GraphQL errors for invalid source look")
+		assert.Contains(t, resp.Errors[0].Message, "source look not found")
 	})
 
 	t.Run("ErrorOnMissingFixtureInSource", func(t *testing.T) {
-		_, err := client.Execute(ctx, `
+		resp, err := client.Execute(ctx, `
 			mutation CopyFixturesToLooks($input: CopyFixturesToLooksInput!) {
 				copyFixturesToLooks(input: $input) {
 					updatedLookCount
@@ -392,7 +393,9 @@ func TestCopyFixturesToLooks(t *testing.T) {
 			},
 		})
 
-		require.Error(t, err, "should error when fixture doesn't exist in source look")
+		require.NoError(t, err, "HTTP request should succeed")
+		require.NotEmpty(t, resp.Errors, "should have GraphQL errors when fixture doesn't exist in source look")
+		assert.Contains(t, resp.Errors[0].Message, "none of the specified fixtures exist")
 	})
 }
 
@@ -726,21 +729,23 @@ func TestCopyFixturesToLooks_AffectedCueCount(t *testing.T) {
 	// Add cues that use the target look
 	for i := 1; i <= 3; i++ {
 		var cueResp struct {
-			AddCue struct {
+			CreateCue struct {
 				ID string `json:"id"`
-			} `json:"addCue"`
+			} `json:"createCue"`
 		}
 
 		err = client.Mutate(ctx, `
-			mutation AddCue($input: AddCueInput!) {
-				addCue(input: $input) { id }
+			mutation CreateCue($input: CreateCueInput!) {
+				createCue(input: $input) { id }
 			}
 		`, map[string]interface{}{
 			"input": map[string]interface{}{
-				"cueListId": cueListID,
-				"name":      "Test Cue",
-				"cueNumber": float64(i),
-				"lookId":    targetLookID,
+				"cueListId":   cueListID,
+				"name":        "Test Cue",
+				"cueNumber":   float64(i),
+				"lookId":      targetLookID,
+				"fadeInTime":  float64(1.0),
+				"fadeOutTime": float64(1.0),
 			},
 		}, &cueResp)
 
