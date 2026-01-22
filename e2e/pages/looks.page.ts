@@ -207,8 +207,8 @@ export class LookEditorPage extends BasePage {
       return false; // No fixtures available to add
     }
 
-    // Find and check the fixture checkbox in the Available Fixtures list
-    const fixtureLabel = this.page.locator(`label:has-text("${fixtureName}")`);
+    // Find and check the fixture checkbox in the Available Fixtures list using exact label match
+    const fixtureLabel = this.page.getByLabel(fixtureName, { exact: true });
     if (await fixtureLabel.isVisible({ timeout: 2000 }).catch(() => false)) {
       await fixtureLabel.click();
       return true;
@@ -231,7 +231,8 @@ export class LookEditorPage extends BasePage {
    * This button appears when fixtures are selected in the editor.
    */
   async isCopyToLooksButtonVisible(): Promise<boolean> {
-    const button = this.page.getByRole("button", { name: /copy to looks/i });
+    // Use title selector for consistent behavior with openCopyToLooksModal
+    const button = this.page.locator('button[title="Copy selected fixtures to other looks"]');
     return await button.isVisible();
   }
 
@@ -240,7 +241,7 @@ export class LookEditorPage extends BasePage {
    * The button appears when fixtures are selected in the editor.
    */
   async openCopyToLooksModal(): Promise<void> {
-    // Click the "Copy to Looks" button (may have abbreviated text on mobile)
+    // Click the "Copy to Looks" button using title selector (consistent with isCopyToLooksButtonVisible)
     const button = this.page.locator('button[title="Copy selected fixtures to other looks"]');
     await expect(button).toBeVisible({ timeout: 5000 });
     await button.click();
@@ -254,10 +255,10 @@ export class LookEditorPage extends BasePage {
    */
   async selectTargetLook(lookName: string): Promise<void> {
     const modal = this.page.getByTestId("copy-fixtures-to-looks-modal");
-    // Click the row containing the look name (it has a checkbox)
-    const lookRow = modal.locator(`div:has-text("${lookName}")`).first();
-    await expect(lookRow).toBeVisible({ timeout: 5000 });
-    await lookRow.click();
+    // Click the checkbox associated with the look name to select the target look
+    const lookCheckbox = modal.getByRole("checkbox", { name: lookName });
+    await expect(lookCheckbox).toBeVisible({ timeout: 5000 });
+    await lookCheckbox.click();
   }
 
   /**
@@ -300,7 +301,8 @@ export class LookEditorPage extends BasePage {
    */
   async selectFixtureInEditor(fixtureName: string): Promise<void> {
     // In channels mode, fixtures are in cards/rows. Click on the fixture header.
-    const fixtureCard = this.page.locator(`h4:has-text("${fixtureName}")`).first();
+    // Use regex to match fixture name at the start (heading includes mode info like "Generic RGB Fader • U1:1")
+    const fixtureCard = this.page.getByRole("heading", { name: new RegExp(`^${fixtureName}`), level: 4 }).first();
     await expect(fixtureCard).toBeVisible({ timeout: 5000 });
     await fixtureCard.click();
   }
@@ -310,7 +312,9 @@ export class LookEditorPage extends BasePage {
    * @param fixtureName - Name of the fixture to check
    */
   async hasFixtureInLook(fixtureName: string): Promise<boolean> {
-    const fixtureCard = this.page.locator(`h4:has-text("${fixtureName}")`);
-    return await fixtureCard.count() > 0;
+    // Use getByRole with regex to match fixture name at the start and check visibility
+    // The heading includes mode info like "Generic RGB Fader • U1:1" after the fixture name
+    const fixtureCard = this.page.getByRole("heading", { name: new RegExp(`^${fixtureName}`), level: 4 }).first();
+    return await fixtureCard.isVisible();
   }
 }
