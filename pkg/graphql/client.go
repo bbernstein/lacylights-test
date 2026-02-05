@@ -14,14 +14,69 @@ import (
 
 // Note: Node server comparison functions have been removed as lacylights-node is deprecated.
 
+const (
+	// TestDeviceFingerprint is a well-known fingerprint for integration tests.
+	// When running integration tests, the backend should either:
+	// 1. Have AUTH_ENABLED=false (no auth required)
+	// 2. Have this device pre-approved in the database
+	// 3. Auto-approve devices with this fingerprint in test mode
+	TestDeviceFingerprint = "test-device-fingerprint-12345"
+
+	// DeviceFingerprintHeader is the HTTP header name for device authentication.
+	DeviceFingerprintHeader = "X-Device-Fingerprint"
+)
+
 // Client is a GraphQL HTTP client for testing.
 type Client struct {
-	endpoint   string
-	httpClient *http.Client
+	endpoint    string
+	fingerprint string
+	httpClient  *http.Client
 }
 
-// NewClient creates a new GraphQL client.
-func NewClient(endpoint string) *Client {
+// ClientOption is a function that configures a Client.
+type ClientOption func(*Client)
+
+// WithFingerprint sets the device fingerprint for authentication.
+// The fingerprint is sent as the X-Device-Fingerprint header with each request.
+func WithFingerprint(fingerprint string) ClientOption {
+	return func(c *Client) {
+		c.fingerprint = fingerprint
+	}
+}
+
+// WithTestDevice configures the client to use the standard test device fingerprint.
+// This is a convenience wrapper around WithFingerprint(TestDeviceFingerprint).
+//
+// When running tests, ensure the backend is configured to accept this device:
+// - Set AUTH_ENABLED=false (simplest, no auth required)
+// - Or pre-approve the test device in the database
+// - Or configure the backend to auto-approve test devices
+func WithTestDevice() ClientOption {
+	return WithFingerprint(TestDeviceFingerprint)
+}
+
+// WithHTTPClient sets a custom HTTP client.
+func WithHTTPClient(httpClient *http.Client) ClientOption {
+	return func(c *Client) {
+		c.httpClient = httpClient
+	}
+}
+
+// NewClient creates a new GraphQL client with optional configuration.
+// If no endpoint is provided, it uses GRAPHQL_ENDPOINT env var or defaults
+// to http://localhost:4001/graphql.
+//
+// Example usage:
+//
+//	// Basic client (no auth)
+//	client := graphql.NewClient("")
+//
+//	// Client with device fingerprint
+//	client := graphql.NewClient("", graphql.WithFingerprint("my-device-id"))
+//
+//	// Client with test device (for integration tests)
+//	client := graphql.NewClient("", graphql.WithTestDevice())
+func NewClient(endpoint string, opts ...ClientOption) *Client {
 	if endpoint == "" {
 		endpoint = os.Getenv("GRAPHQL_ENDPOINT")
 	}
@@ -29,12 +84,29 @@ func NewClient(endpoint string) *Client {
 		endpoint = "http://localhost:4001/graphql"
 	}
 
-	return &Client{
+	c := &Client{
 		endpoint: endpoint,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
+}
+
+// NewTestClient creates a GraphQL client configured for integration tests.
+// It uses the test device fingerprint for authentication.
+//
+// This is equivalent to:
+//
+//	NewClient(endpoint, WithTestDevice())
+func NewTestClient(endpoint string) *Client {
+	return NewClient(endpoint, WithTestDevice())
 }
 
 
@@ -102,6 +174,11 @@ func (c *Client) Execute(ctx context.Context, query string, variables map[string
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
+	// Add device fingerprint header if configured
+	if c.fingerprint != "" {
+		httpReq.Header.Set(DeviceFingerprintHeader, c.fingerprint)
+	}
+
 	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
@@ -142,6 +219,18 @@ func (c *Client) ExecuteRaw(ctx context.Context, query string, variables map[str
 // Endpoint returns the client's endpoint URL.
 func (c *Client) Endpoint() string {
 	return c.endpoint
+}
+
+// Fingerprint returns the client's device fingerprint.
+// Returns empty string if no fingerprint is configured.
+func (c *Client) Fingerprint() string {
+	return c.fingerprint
+}
+
+// SetFingerprint sets the device fingerprint for subsequent requests.
+// Pass empty string to clear the fingerprint.
+func (c *Client) SetFingerprint(fingerprint string) {
+	c.fingerprint = fingerprint
 }
 
 // CompareResponses compares two JSON responses for equality.
