@@ -223,12 +223,20 @@ func (c *Client) Endpoint() string {
 
 // Fingerprint returns the client's device fingerprint.
 // Returns empty string if no fingerprint is configured.
+//
+// Note: Client is not safe for concurrent use. If a Client instance is shared
+// between multiple goroutines, callers must ensure that all accesses to it,
+// including calls to Fingerprint and SetFingerprint, are properly synchronized.
 func (c *Client) Fingerprint() string {
 	return c.fingerprint
 }
 
 // SetFingerprint sets the device fingerprint for subsequent requests.
 // Pass empty string to clear the fingerprint.
+//
+// This method is not safe for concurrent use without external synchronization.
+// If a Client is shared between goroutines, protect calls to this method with
+// appropriate locking.
 func (c *Client) SetFingerprint(fingerprint string) {
 	c.fingerprint = fingerprint
 }
