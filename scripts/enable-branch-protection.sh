@@ -56,10 +56,12 @@ EOF
 )
 
     # Apply protection
-    if gh api -X PUT "repos/$repo/branches/main/protection" --input - <<< "$payload" > /dev/null 2>&1; then
+    local error_output
+    if error_output=$(gh api -X PUT "repos/$repo/branches/main/protection" --input - <<< "$payload" 2>&1); then
         echo "   ✅ Branch protection enabled"
     else
-        echo "   ⚠️  Failed to enable branch protection (may already exist)"
+        echo "   ⚠️  Failed to enable branch protection"
+        echo "   Error: $error_output"
     fi
 }
 

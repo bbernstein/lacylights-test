@@ -256,10 +256,22 @@ For each repo:
 5. Enable "Require branches to be up to date before merging"
 6. Save changes
 
-### How to Configure (via GitHub CLI)
+### How to Configure (Automated Script - Recommended)
+
+Use the provided script to enable branch protection on all repositories:
 
 ```bash
-# Script to enable branch protection on all repos
+./scripts/enable-branch-protection.sh
+```
+
+This script automatically configures all four repositories with the required status checks.
+
+### How to Configure (Manual via GitHub CLI)
+
+Alternatively, you can manually configure each repository:
+
+```bash
+# Manual commands to enable branch protection on all repos
 gh api -X PUT "repos/bbernstein/lacylights-test/branches/main/protection" \
   --input - << 'EOF'
 {
@@ -306,7 +318,7 @@ EOF
 ### 1. Before Starting Work
 ```bash
 # Ensure all repos are on main and up to date
-cd /Users/bernard/src/lacylights
+cd /path/to/your/lacylights  # Replace with your actual path
 for repo in lacylights-go lacylights-fe lacylights-mcp lacylights-test; do
   (cd "$repo" && git checkout main && git pull)
 done
