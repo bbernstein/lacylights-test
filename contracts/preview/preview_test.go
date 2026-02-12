@@ -353,3 +353,129 @@ func TestStartingNewSessionCancelsPrevious(t *testing.T) {
 		"sessionId": session2ID,
 	}, nil)
 }
+
+func TestPreviewBulkChannelUpdate(t *testing.T) {
+	skipIfNoPreview(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	client := graphql.NewClient("")
+
+	// Create a test project with an RGB fixture
+	projectID := createTestProject(t, client)
+	defer deleteTestProject(t, client, projectID)
+
+	// Create a fixture definition with RGB channels
+	modelName := fmt.Sprintf("Bulk Update Test Fixture %d", time.Now().UnixNano())
+	var defResp struct {
+		CreateFixtureDefinition struct {
+			ID string `json:"id"`
+		} `json:"createFixtureDefinition"`
+	}
+
+	err := client.Mutate(ctx, `
+		mutation CreateFixtureDefinition($input: CreateFixtureDefinitionInput!) {
+			createFixtureDefinition(input: $input) { id }
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"manufacturer": "Test",
+			"model":        modelName,
+			"type":         "LED_PAR",
+			"channels": []map[string]interface{}{
+				{"name": "Dimmer", "type": "INTENSITY", "offset": 0, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Red", "type": "RED", "offset": 1, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Green", "type": "GREEN", "offset": 2, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+				{"name": "Blue", "type": "BLUE", "offset": 3, "minValue": 0, "maxValue": 255, "defaultValue": 0},
+			},
+		},
+	}, &defResp)
+
+	require.NoError(t, err)
+	definitionID := defResp.CreateFixtureDefinition.ID
+
+	// Clean up the fixture definition after test
+	defer func() {
+		_ = client.Mutate(ctx, `mutation DeleteFixtureDefinition($id: ID!) { deleteFixtureDefinition(id: $id) }`,
+			map[string]interface{}{"id": definitionID}, nil)
+	}()
+
+	// Create a fixture instance
+	var fixtureResp struct {
+		CreateFixtureInstance struct {
+			ID           string `json:"id"`
+			StartChannel int    `json:"startChannel"`
+		} `json:"createFixtureInstance"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation CreateFixtureInstance($input: CreateFixtureInstanceInput!) {
+			createFixtureInstance(input: $input) {
+				id
+				startChannel
+			}
+		}
+	`, map[string]interface{}{
+		"input": map[string]interface{}{
+			"projectId":    projectID,
+			"definitionId": definitionID,
+			"name":         "RGB Test Fixture",
+			"universe":     1,
+			"startChannel": 1,
+		},
+	}, &fixtureResp)
+
+	require.NoError(t, err)
+	fixtureID := fixtureResp.CreateFixtureInstance.ID
+
+	// Start preview session
+	var startResp struct {
+		StartPreviewSession struct {
+			ID string `json:"id"`
+		} `json:"startPreviewSession"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation StartPreview($projectId: ID!) {
+			startPreviewSession(projectId: $projectId) {
+				id
+			}
+		}
+	`, map[string]interface{}{
+		"projectId": projectID,
+	}, &startResp)
+
+	require.NoError(t, err)
+	sessionID := startResp.StartPreviewSession.ID
+
+	// Update multiple channels in a single bulk mutation (simulates color picker RGB update)
+	var updateResp struct {
+		UpdatePreviewChannels bool `json:"updatePreviewChannels"`
+	}
+
+	err = client.Mutate(ctx, `
+		mutation UpdatePreviewBulk($sessionId: ID!, $updates: [PreviewChannelUpdateInput!]!) {
+			updatePreviewChannels(sessionId: $sessionId, updates: $updates)
+		}
+	`, map[string]interface{}{
+		"sessionId": sessionID,
+		"updates": []map[string]interface{}{
+			{"fixtureId": fixtureID, "channelIndex": 1, "value": 255}, // Red
+			{"fixtureId": fixtureID, "channelIndex": 2, "value": 128}, // Green
+			{"fixtureId": fixtureID, "channelIndex": 3, "value": 64},  // Blue
+		},
+	}, &updateResp)
+
+	require.NoError(t, err, "Bulk channel update should succeed")
+	assert.True(t, updateResp.UpdatePreviewChannels, "Bulk update should return true")
+
+	// Clean up
+	_ = client.Mutate(ctx, `
+		mutation CancelPreview($sessionId: ID!) {
+			cancelPreviewSession(sessionId: $sessionId)
+		}
+	`, map[string]interface{}{
+		"sessionId": sessionID,
+	}, nil)
+}
