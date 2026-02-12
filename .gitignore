@@ -43,3 +43,7 @@ Thumbs.db
 *.temp
 tmp/
 temp/
+script.txt
+
+# Test results
+test-results/

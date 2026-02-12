@@ -11,7 +11,9 @@ cd "$BACKEND_DIR" || { echo "Error: Cannot find lacylights-go directory"; exit 1
 export PORT=$PORT
 export GRAPHQL_PORT=$PORT
 export CORS_ORIGIN="http://localhost:$FRONTEND_PORT"
+export AUTH_ENABLED=${AUTH_ENABLED:-false}
 
 echo "Starting lacylights-go on port $PORT..."
 echo "  CORS_ORIGIN=$CORS_ORIGIN"
+echo "  AUTH_ENABLED=$AUTH_ENABLED (disabled for testing)"
 make run
