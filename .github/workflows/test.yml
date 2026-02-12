@@ -266,3 +266,4 @@ jobs:
           name: playwright-screenshots
           path: e2e/test-results/
           retention-days: 30
+
