@@ -40,15 +40,16 @@ test.describe("Fixture Position Undo/Redo", () => {
     await setupCiProxy(page);
   });
 
-  // Test data - uses startChannel 100 to avoid conflicts with default channel 1
-  // Edge case tests use startChannel 200 to ensure isolation if cleanup fails
+  // Test data — uses startChannel 300 to avoid colliding with the dashboard
+  // suite (which leaves a Generic RGB Fader at U1:100-105 in the same E2E
+  // project) and with the edge-case tests below (startChannel 200).
   const testData = {
     fixture: {
       name: "Position Test Light",
       manufacturer: "Generic",
       model: "RGB Fader",
       universe: 1,
-      startChannel: 100,
+      startChannel: 300,
     },
     look: {
       name: "Position Test Look",
