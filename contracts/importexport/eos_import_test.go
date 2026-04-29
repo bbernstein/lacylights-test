@@ -6,6 +6,7 @@ package importexport
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -164,13 +165,10 @@ func TestEosImport_RejectsConflictingOptions(t *testing.T) {
 	}, &projResp))
 	defer deleteProject(t, client, ctx, projResp.CreateProject.ID)
 
-	var resp struct {
-		ImportProjectFromEos struct {
-			ProjectID string `json:"projectId"`
-		} `json:"importProjectFromEos"`
-	}
-
-	err := client.Mutate(ctx, `
+	// Use Execute so we can inspect both data and errors. Client.Mutate
+	// returns early on a GraphQL error and never unmarshals the response,
+	// which would leak any project the backend created despite the error.
+	rawResp, execErr := client.Execute(ctx, `
 		mutation Import($c: String!, $opts: EosImportOptionsInput) {
 			importProjectFromEos(asciiContent: $c, options: $opts) {
 				projectId
@@ -182,17 +180,27 @@ func TestEosImport_RejectsConflictingOptions(t *testing.T) {
 			"newProjectName":  "Should Not Be Created",
 			"targetProjectId": projResp.CreateProject.ID,
 		},
-	}, &resp)
+	})
+	require.NoError(t, execErr, "transport-level call should succeed")
+	require.NotEmpty(t, rawResp.Errors, "expected backend to reject mutually-exclusive options")
 
-	require.Error(t, err, "expected backend to reject mutually-exclusive options")
 	// Best-effort cleanup if the backend created something despite the error.
-	deleteProject(t, client, ctx, resp.ImportProjectFromEos.ProjectID)
+	if len(rawResp.Data) > 0 {
+		var resp struct {
+			ImportProjectFromEos struct {
+				ProjectID string `json:"projectId"`
+			} `json:"importProjectFromEos"`
+		}
+		if err := json.Unmarshal(rawResp.Data, &resp); err == nil {
+			deleteProject(t, client, ctx, resp.ImportProjectFromEos.ProjectID)
+		}
+	}
 
-	msg := strings.ToLower(err.Error())
+	msg := strings.ToLower(rawResp.Errors[0].Message)
 	assert.True(t,
 		strings.Contains(msg, "newprojectname") ||
 			strings.Contains(msg, "targetprojectid") ||
 			strings.Contains(msg, "mutually") ||
 			strings.Contains(msg, "exclusive"),
-		"expected error to mention the conflicting fields, got: %s", err.Error())
+		"expected error to mention the conflicting fields, got: %s", rawResp.Errors[0].Message)
 }

@@ -17,13 +17,13 @@ import (
 // TestEosRoundtrip_PreservesPatch builds a small project via the native
 // GraphQL mutations, exports it to Eos ASCII, then imports the exported
 // content into a fresh project. It asserts that the imported project
-// contains at least as many fixtures as the source — i.e. the export
-// writer + import parser together don't drop the patch.
+// preserves the source patch exactly, including matching fixture counts
+// after the round-trip through the export writer and import parser.
 //
 // Validates the contract that:
 //   - exportProjectToEos returns non-empty asciiContent and a filenameSuffix
 //   - the writer's output is parseable by the importer (no manual editing required)
-//   - patch counts survive the round trip
+//   - fixture counts are preserved exactly across the round trip
 func TestEosRoundtrip_PreservesPatch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
