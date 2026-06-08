@@ -1009,6 +1009,12 @@ func TestUnfadableChannelTypes(t *testing.T) {
 	t.Logf("SNAP_END channel: held at %d, reached target at frame %d",
 		snapEndHoldValue, snapEndReachedTarget)
 
+	// SNAP_END must hold the captured start value (0, fading up from black) for
+	// the entire duration of the fade and only jump to the target at the end.
+	// The modulator fade engine emits exactly the start value mid-fade (see the
+	// lacylights-go unit tests TestFadeToLook_SnapEnd / _SnapEndFromZero), so a
+	// fade up from black holds at exactly 0. Anything >0 means the channel is
+	// interpolating like a FADE channel - the exact bug this contract guards.
 	assert.Equal(t, 0, snapEndHoldValue,
 		"Gobo Rotation (SNAP_END) should hold at start value during fade")
 	assert.Greater(t, snapEndReachedTarget, 30,
@@ -1234,7 +1240,25 @@ func TestStrobeChannelSNAP(t *testing.T) {
 	intermediateStrobeValues := make(map[int]int) // value -> count
 	strobeReachedTarget := -1
 
+	// Establish an activation baseline: the first frame where the strobe
+	// channel becomes active (>0). SNAP timing must be measured RELATIVE to
+	// this activation frame, not the absolute capture-start index. Capture
+	// begins ~100ms before the look is activated (plus mutation HTTP latency),
+	// so an absolute frame index would always overshoot a "within N frames"
+	// bound. This mirrors the firstActiveFrame pattern in
+	// TestUnfadableChannelTypes.
 	// Note: Universe 1 in API = Universe 0 in Art-Net protocol
+	firstActiveFrame := -1
+	for i, frame := range frames {
+		if frame.Universe != 0 {
+			continue
+		}
+		if int(frame.Channels[startChannel-1+1]) > 0 {
+			firstActiveFrame = i
+			break
+		}
+	}
+
 	for i, frame := range frames {
 		if frame.Universe != 0 {
 			continue
@@ -1248,7 +1272,8 @@ func TestStrobeChannelSNAP(t *testing.T) {
 		}
 
 		if strobe >= 200 && strobeReachedTarget < 0 {
-			strobeReachedTarget = i
+			// Measure relative to activation, not capture start.
+			strobeReachedTarget = i - firstActiveFrame
 		}
 	}
 
