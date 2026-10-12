@@ -453,6 +453,13 @@ func TestExportDataWorkbook(t *testing.T) {
 		assert.Contains(t, err.Error(), "scopeId is required")
 	})
 
+	t.Run("EmptyTableListRejected", func(t *testing.T) {
+		// An explicit [] is distinct from omitting tables (default set).
+		_, err := exportWorkbook(ctx, client, s.ProjectID, []string{})
+		require.Error(t, err, "an explicit empty table list must not fall back to the default set")
+		assert.Contains(t, err.Error(), "at least one table is required")
+	})
+
 	t.Run("UnknownProjectRejected", func(t *testing.T) {
 		_, err := exportWorkbook(ctx, client, "00000000-0000-0000-0000-000000000000", nil)
 		require.Error(t, err)
@@ -510,18 +517,18 @@ func TestExportDataTable_CellEscaping(t *testing.T) {
 	projectID := createProject(t, ctx, client, fmt.Sprintf("DataExport Escaping %d", time.Now().UnixNano()))
 	t.Cleanup(func() { deleteProject(context.Background(), client, projectID) })
 
-	// One look per formula-leading character the CSV export must neutralise,
-	// with the Name cell expected in the CSV. The server writes CSV with
-	// CRLF line endings (encoding/csv UseCRLF), which drops a bare CR inside
-	// a field, so "\rCR lead" is exported as "'CR lead": the CR is lost but
-	// the injection guard (leading single quote) must still be applied.
+	// One look per formula-leading character the CSV export must neutralise
+	// (= + - @ TAB CR LF), with the Name cell expected in the CSV. The
+	// server normalises a lone CR to LF (encoding/csv with UseCRLF would
+	// otherwise drop it), so "\rCR lead" is exported as "'\nCR lead".
 	formulaCases := []struct{ name, csv string }{
 		{"=1+1", "'=1+1"},
 		{"+1+1", "'+1+1"},
 		{"-1+1", "'-1+1"},
 		{"@SUM(A1)", "'@SUM(A1)"},
 		{"\tTab lead", "'\tTab lead"},
-		{"\rCR lead", "'CR lead"},
+		{"\rCR lead", "'\nCR lead"},
+		{"\nLF lead", "'\nLF lead"},
 	}
 	formulaNames := make([]string, 0, len(formulaCases))
 	for _, c := range formulaCases {
@@ -547,7 +554,6 @@ func TestExportDataTable_CellEscaping(t *testing.T) {
 			assert.Contains(t, byName, c.csv, "formula-like text %q is prefixed with a single quote", c.name)
 			assert.NotContains(t, byName, c.name, "formula-like text %q must not be exported raw", c.name)
 		}
-		assert.NotContains(t, byName, "CR lead", "CR-leading text must keep its quote prefix")
 		for _, name := range plainNames {
 			assert.Contains(t, byName, name, "%q round-trips through CSV quoting unchanged", name)
 			assert.NotContains(t, byName, "'"+name, "%q must not be quote-prefixed", name)
