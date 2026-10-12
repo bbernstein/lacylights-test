@@ -36,7 +36,8 @@ The foundation of our testing is contract validation for the lacylights-go Graph
 - **OFL Import** (`contracts/ofl/`) - Open Fixture Library integration
 - **Playback** (`contracts/playback/`) - Cue list execution
 - **Settings** (`contracts/settings/`) - System configuration persistence
-- **Import/Export** (`contracts/importexport/`) - Data portability
+- **Import/Export** (`contracts/importexport/`) - Data portability (project exports via `Query.projectExport*`; deprecated export Mutations kept until removed)
+- **Data Export** (`contracts/dataexport/`) - CSV/XLSX data-list exports (`dataExportTables`, `exportDataTable`, `exportDataWorkbook`)
 
 ### Integration Tests
 
@@ -442,7 +443,7 @@ Tests serve as executable documentation:
 ## Tools and Technologies
 
 ### Current Stack
-- **Language**: Go 1.23+
+- **Language**: Go 1.25+
 - **Testing**: Go `testing` package, `testify` assertions
 - **API Testing**: Custom GraphQL client
 - **DMX Capture**: Custom Art-Net receiver

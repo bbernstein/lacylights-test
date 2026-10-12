@@ -21,7 +21,7 @@ import (
 // after the round-trip through the export writer and import parser.
 //
 // Validates the contract that:
-//   - exportProjectToEos returns non-empty asciiContent and a filenameSuffix
+//   - projectExportEos returns non-empty asciiContent and a filenameSuffix
 //   - the writer's output is parseable by the importer (no manual editing required)
 //   - fixture counts are preserved exactly across the round trip
 func TestEosRoundtrip_PreservesPatch(t *testing.T) {
@@ -42,16 +42,16 @@ func TestEosRoundtrip_PreservesPatch(t *testing.T) {
 
 	// Step 1: export to Eos ASCII.
 	var exp struct {
-		ExportProjectToEos struct {
+		ProjectExportEos struct {
 			ProjectID      string `json:"projectId"`
 			ProjectName    string `json:"projectName"`
 			ASCIIContent   string `json:"asciiContent"`
 			FilenameSuffix string `json:"filenameSuffix"`
-		} `json:"exportProjectToEos"`
+		} `json:"projectExportEos"`
 	}
-	err := client.Mutate(ctx, `
-		mutation Export($p: ID!) {
-			exportProjectToEos(projectId: $p) {
+	err := client.Query(ctx, `
+		query Export($p: ID!) {
+			projectExportEos(projectId: $p) {
 				projectId
 				projectName
 				asciiContent
@@ -61,15 +61,15 @@ func TestEosRoundtrip_PreservesPatch(t *testing.T) {
 	`, map[string]interface{}{"p": sourceProjectID}, &exp)
 	require.NoError(t, err)
 
-	assert.Equal(t, sourceProjectID, exp.ExportProjectToEos.ProjectID)
-	assert.NotEmpty(t, exp.ExportProjectToEos.ASCIIContent, "export should produce ASCII content")
-	assert.NotEmpty(t, exp.ExportProjectToEos.FilenameSuffix, "export should suggest a filename suffix")
+	assert.Equal(t, sourceProjectID, exp.ProjectExportEos.ProjectID)
+	assert.NotEmpty(t, exp.ProjectExportEos.ASCIIContent, "export should produce ASCII content")
+	assert.NotEmpty(t, exp.ProjectExportEos.FilenameSuffix, "export should suggest a filename suffix")
 
 	// Sanity: ETC Eos showfiles open with an Ident header. Catches gross
 	// writer regressions before we even hand the content to the importer.
 	require.True(t,
-		strings.Contains(exp.ExportProjectToEos.ASCIIContent, "Ident") ||
-			strings.HasPrefix(strings.TrimSpace(exp.ExportProjectToEos.ASCIIContent), "!"),
+		strings.Contains(exp.ProjectExportEos.ASCIIContent, "Ident") ||
+			strings.HasPrefix(strings.TrimSpace(exp.ProjectExportEos.ASCIIContent), "!"),
 		"export should look like an ETC Eos ASCII showfile")
 
 	// Step 2: import the exported content into a fresh project.
@@ -94,7 +94,7 @@ func TestEosRoundtrip_PreservesPatch(t *testing.T) {
 			}
 		}
 	`, map[string]interface{}{
-		"c": exp.ExportProjectToEos.ASCIIContent,
+		"c": exp.ProjectExportEos.ASCIIContent,
 		"opts": map[string]interface{}{
 			"newProjectName": "Eos Roundtrip Imported",
 		},

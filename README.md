@@ -72,6 +72,7 @@ lacylights-test/
 ├── contracts/             # Contract tests (API behavior validation)
 │   ├── api/              # GraphQL API contract tests
 │   ├── crud/             # CRUD operation tests
+│   ├── dataexport/       # CSV/XLSX data export tests
 │   ├── dmx/              # DMX output behavior tests
 │   ├── fade/             # Fade curve, timing, FadeBehavior tests
 │   ├── ofl/              # OFL import tests
@@ -119,7 +120,7 @@ This enables **pre-merge integration testing** across repositories to catch inte
 
 ## Prerequisites
 
-- Go 1.23+
+- Go 1.25+
 - lacylights-go server running on port 4001 (for local testing)
 - (Optional) lacylights-fe server on port 3000 (for future E2E tests)
 - (Optional) Playwright for browser testing (future)

@@ -24,6 +24,7 @@ make test-dmx            # Run DMX behavior tests
 make test-fade           # Run fade behavior tests
 make test-preview        # Run preview mode tests
 make test-settings       # Run settings contract tests
+make test-dataexport     # Run CSV/XLSX data export contract tests
 make test-integration    # Run integration tests
 make test-distribution   # Run S3 distribution tests
 ```
@@ -55,6 +56,7 @@ lacylights-test/
 ├── contracts/           # API contract tests
 │   ├── api/            # GraphQL API contracts
 │   ├── crud/           # CRUD operation tests
+│   ├── dataexport/     # CSV/XLSX data export contract tests
 │   ├── dmx/            # DMX output behavior tests
 │   ├── fade/           # Fade curve and timing tests
 │   ├── importexport/   # Import/export contract tests
