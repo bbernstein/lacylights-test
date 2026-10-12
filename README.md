@@ -72,6 +72,7 @@ lacylights-test/
 ├── contracts/             # Contract tests (API behavior validation)
 │   ├── api/              # GraphQL API contract tests
 │   ├── crud/             # CRUD operation tests
+│   ├── dataexport/       # CSV/XLSX data export tests
 │   ├── dmx/              # DMX output behavior tests
 │   ├── fade/             # Fade curve, timing, FadeBehavior tests
 │   ├── ofl/              # OFL import tests

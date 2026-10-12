@@ -212,7 +212,7 @@ func TestExportProject(t *testing.T) {
 
 	// Export project
 	var exportResp struct {
-		ExportProject struct {
+		ProjectExport struct {
 			ProjectID   string `json:"projectId"`
 			ProjectName string `json:"projectName"`
 			JSONContent string `json:"jsonContent"`
@@ -223,12 +223,12 @@ func TestExportProject(t *testing.T) {
 				CueListsCount           int `json:"cueListsCount"`
 				CuesCount               int `json:"cuesCount"`
 			} `json:"stats"`
-		} `json:"exportProject"`
+		} `json:"projectExport"`
 	}
 
-	err := client.Mutate(ctx, `
-		mutation ExportProject($projectId: ID!, $options: ExportOptionsInput) {
-			exportProject(projectId: $projectId, options: $options) {
+	err := client.Query(ctx, `
+		query ExportProject($projectId: ID!, $options: ExportOptionsInput) {
+			projectExport(projectId: $projectId, options: $options) {
 				projectId
 				projectName
 				jsonContent
@@ -251,19 +251,19 @@ func TestExportProject(t *testing.T) {
 	}, &exportResp)
 
 	require.NoError(t, err)
-	assert.Equal(t, projectID, exportResp.ExportProject.ProjectID)
-	assert.Equal(t, "Export Test Project", exportResp.ExportProject.ProjectName)
-	assert.NotEmpty(t, exportResp.ExportProject.JSONContent)
+	assert.Equal(t, projectID, exportResp.ProjectExport.ProjectID)
+	assert.Equal(t, "Export Test Project", exportResp.ProjectExport.ProjectName)
+	assert.NotEmpty(t, exportResp.ProjectExport.JSONContent)
 
 	// Verify stats
-	assert.GreaterOrEqual(t, exportResp.ExportProject.Stats.FixtureInstancesCount, 1)
-	assert.GreaterOrEqual(t, exportResp.ExportProject.Stats.LooksCount, 1)
-	assert.GreaterOrEqual(t, exportResp.ExportProject.Stats.CueListsCount, 1)
-	assert.GreaterOrEqual(t, exportResp.ExportProject.Stats.CuesCount, 1)
+	assert.GreaterOrEqual(t, exportResp.ProjectExport.Stats.FixtureInstancesCount, 1)
+	assert.GreaterOrEqual(t, exportResp.ProjectExport.Stats.LooksCount, 1)
+	assert.GreaterOrEqual(t, exportResp.ProjectExport.Stats.CueListsCount, 1)
+	assert.GreaterOrEqual(t, exportResp.ProjectExport.Stats.CuesCount, 1)
 
 	// Verify JSON is valid
 	var jsonData map[string]interface{}
-	err = json.Unmarshal([]byte(exportResp.ExportProject.JSONContent), &jsonData)
+	err = json.Unmarshal([]byte(exportResp.ProjectExport.JSONContent), &jsonData)
 	require.NoError(t, err, "Exported JSON should be valid")
 
 	// Store for import test
@@ -298,7 +298,7 @@ func TestExportProject(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"jsonContent": exportResp.ExportProject.JSONContent,
+			"jsonContent": exportResp.ProjectExport.JSONContent,
 			"options": map[string]interface{}{
 				"mode":        "CREATE",
 				"projectName": "Imported Test Project",
@@ -367,17 +367,17 @@ func TestExportWithOptions(t *testing.T) {
 	// Export without cue lists
 	t.Run("ExportWithoutCueLists", func(t *testing.T) {
 		var exportResp struct {
-			ExportProject struct {
+			ProjectExport struct {
 				Stats struct {
 					CueListsCount int `json:"cueListsCount"`
 					CuesCount     int `json:"cuesCount"`
 				} `json:"stats"`
-			} `json:"exportProject"`
+			} `json:"projectExport"`
 		}
 
-		err := client.Mutate(ctx, `
-			mutation ExportProject($projectId: ID!, $options: ExportOptionsInput) {
-				exportProject(projectId: $projectId, options: $options) {
+		err := client.Query(ctx, `
+			query ExportProject($projectId: ID!, $options: ExportOptionsInput) {
+				projectExport(projectId: $projectId, options: $options) {
 					stats {
 						cueListsCount
 						cuesCount
@@ -394,8 +394,8 @@ func TestExportWithOptions(t *testing.T) {
 		}, &exportResp)
 
 		require.NoError(t, err)
-		assert.Equal(t, 0, exportResp.ExportProject.Stats.CueListsCount)
-		assert.Equal(t, 0, exportResp.ExportProject.Stats.CuesCount)
+		assert.Equal(t, 0, exportResp.ProjectExport.Stats.CueListsCount)
+		assert.Equal(t, 0, exportResp.ProjectExport.Stats.CuesCount)
 	})
 
 	// Export with custom description
@@ -406,14 +406,14 @@ func TestExportWithOptions(t *testing.T) {
 		}
 
 		var exportResp struct {
-			ExportProject struct {
+			ProjectExport struct {
 				JSONContent string `json:"jsonContent"`
-			} `json:"exportProject"`
+			} `json:"projectExport"`
 		}
 
-		err := client.Mutate(ctx, `
-			mutation ExportProject($projectId: ID!, $options: ExportOptionsInput) {
-				exportProject(projectId: $projectId, options: $options) {
+		err := client.Query(ctx, `
+			query ExportProject($projectId: ID!, $options: ExportOptionsInput) {
+				projectExport(projectId: $projectId, options: $options) {
 					jsonContent
 				}
 			}
@@ -427,10 +427,10 @@ func TestExportWithOptions(t *testing.T) {
 		require.NoError(t, err)
 		// Some servers may not include custom description in export JSON
 		// Skip gracefully if the description is not present
-		if !strings.Contains(exportResp.ExportProject.JSONContent, "Custom export description") {
+		if !strings.Contains(exportResp.ProjectExport.JSONContent, "Custom export description") {
 			t.Skip("Skipping: Go server doesn't include custom description in export JSON")
 		}
-		assert.Contains(t, exportResp.ExportProject.JSONContent, "Custom export description")
+		assert.Contains(t, exportResp.ProjectExport.JSONContent, "Custom export description")
 	})
 }
 
@@ -449,14 +449,14 @@ func TestImportModes(t *testing.T) {
 
 	// Export first
 	var exportResp struct {
-		ExportProject struct {
+		ProjectExport struct {
 			JSONContent string `json:"jsonContent"`
-		} `json:"exportProject"`
+		} `json:"projectExport"`
 	}
 
-	err := client.Mutate(ctx, `
-		mutation ExportProject($projectId: ID!) {
-			exportProject(projectId: $projectId) {
+	err := client.Query(ctx, `
+		query ExportProject($projectId: ID!) {
+			projectExport(projectId: $projectId) {
 				jsonContent
 			}
 		}
@@ -479,7 +479,7 @@ func TestImportModes(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"jsonContent": exportResp.ExportProject.JSONContent,
+			"jsonContent": exportResp.ProjectExport.JSONContent,
 			"options": map[string]interface{}{
 				"mode":        "CREATE",
 				"projectName": "Create Mode Test",
@@ -532,7 +532,7 @@ func TestImportModes(t *testing.T) {
 				}
 			}
 		`, map[string]interface{}{
-			"jsonContent": exportResp.ExportProject.JSONContent,
+			"jsonContent": exportResp.ProjectExport.JSONContent,
 			"options": map[string]interface{}{
 				"mode":            "MERGE",
 				"targetProjectId": targetProjectID,
@@ -564,18 +564,18 @@ func TestQLCExportImport(t *testing.T) {
 		}
 
 		var exportResp struct {
-			ExportProjectToQLC struct {
+			ProjectExportQLC struct {
 				ProjectName  string `json:"projectName"`
 				XMLContent   string `json:"xmlContent"`
 				FixtureCount int    `json:"fixtureCount"`
 				LookCount    int    `json:"lookCount"`
 				CueListCount int    `json:"cueListCount"`
-			} `json:"exportProjectToQLC"`
+			} `json:"projectExportQLC"`
 		}
 
-		err := client.Mutate(ctx, `
-			mutation ExportToQLC($projectId: ID!) {
-				exportProjectToQLC(projectId: $projectId) {
+		err := client.Query(ctx, `
+			query ExportToQLC($projectId: ID!) {
+				projectExportQLC(projectId: $projectId) {
 					projectName
 					xmlContent
 					fixtureCount
@@ -590,12 +590,12 @@ func TestQLCExportImport(t *testing.T) {
 			t.Skip("Skipping QLC+ export test: QLC+ export not available on this platform")
 		}
 		require.NoError(t, err)
-		assert.Equal(t, "Export Test Project", exportResp.ExportProjectToQLC.ProjectName)
-		assert.NotEmpty(t, exportResp.ExportProjectToQLC.XMLContent)
-		assert.True(t, strings.HasPrefix(exportResp.ExportProjectToQLC.XMLContent, "<?xml") ||
-			strings.Contains(exportResp.ExportProjectToQLC.XMLContent, "<Workspace"),
+		assert.Equal(t, "Export Test Project", exportResp.ProjectExportQLC.ProjectName)
+		assert.NotEmpty(t, exportResp.ProjectExportQLC.XMLContent)
+		assert.True(t, strings.HasPrefix(exportResp.ProjectExportQLC.XMLContent, "<?xml") ||
+			strings.Contains(exportResp.ProjectExportQLC.XMLContent, "<Workspace"),
 			"Should be valid XML")
-		assert.GreaterOrEqual(t, exportResp.ExportProjectToQLC.FixtureCount, 1)
+		assert.GreaterOrEqual(t, exportResp.ProjectExportQLC.FixtureCount, 1)
 	})
 }
 

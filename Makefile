@@ -10,7 +10,7 @@ GO_SERVER_URL ?= http://localhost:4001/graphql
 ARTNET_LISTEN_PORT ?= 6454
 
 .PHONY: all build clean test test-ci test-all test-contracts test-contracts-go \
-        test-dmx test-fade test-effects test-preview test-settings test-undo lint help deps \
+        test-dmx test-fade test-effects test-preview test-settings test-undo test-dataexport lint help deps \
         start-go-server stop-go-server wait-for-server test-load run-load-tests \
         e2e e2e-ui e2e-setup e2e-headed
 
@@ -114,6 +114,15 @@ test-undo:
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) $(GO) test $(GOFLAGS) ./contracts/undo/...
 
 # =============================================================================
+# DATA EXPORT TESTS
+# =============================================================================
+
+## test-dataexport: Run CSV/XLSX data export contract tests
+test-dataexport:
+	@echo "Running data export contract tests..."
+	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) $(GO) test $(GOFLAGS) ./contracts/dataexport/...
+
+# =============================================================================
 # INTEGRATION TESTS
 # =============================================================================
 
@@ -143,7 +152,7 @@ test:
 test-ci:
 	@echo "Running CI-safe tests (no Art-Net required)..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) SKIP_FADE_TESTS=1 \
-		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/... ./contracts/settings/... ./contracts/undo/...
+		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/dataexport/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/... ./contracts/settings/... ./contracts/undo/...
 
 ## test-all: Run all tests including integration tests
 test-all:
