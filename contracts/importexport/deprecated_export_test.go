@@ -90,7 +90,7 @@ func TestProjectExportQueriesReplaceDeprecatedMutations(t *testing.T) {
 		projectID := setupExportTest(t, client, ctx)
 		defer deleteProject(t, client, ctx, projectID)
 
-		// JSON: same project and stats from the Mutation and the Query.
+		// JSON: same project, stats and JSON payload from the Mutation and the Query.
 		type jsonExport struct {
 			ProjectID   string `json:"projectId"`
 			ProjectName string `json:"projectName"`
@@ -125,6 +125,7 @@ func TestProjectExportQueriesReplaceDeprecatedMutations(t *testing.T) {
 		assert.Equal(t, q.ProjectName, m.ProjectName)
 		assert.Equal(t, q.Stats, m.Stats, "Mutation and Query must report the same stats")
 		assert.NotEmpty(t, m.JSONContent)
+		assert.JSONEq(t, m.JSONContent, q.JSONContent, "Mutation and Query must return the same project JSON")
 		assert.GreaterOrEqual(t, m.Stats.FixtureInstancesCount, 1)
 
 		// Eos: both return an ASCII showfile for the same project.

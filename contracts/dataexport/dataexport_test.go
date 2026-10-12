@@ -509,7 +509,7 @@ func TestExportDataTable_Errors(t *testing.T) {
 
 // TestExportDataTable_CellEscaping checks that user-entered text survives
 // export safely: CSV quotes commas, quotes and line breaks (RFC 4180) and
-// prefixes text starting with any formula character (= + - @ TAB CR) with
+// prefixes text starting with any formula character (= + - @ TAB CR LF) with
 // a single quote (CSV injection); XLSX stores the same text as a plain
 // string, never as a formula.
 func TestExportDataTable_CellEscaping(t *testing.T) {

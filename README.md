@@ -120,7 +120,7 @@ This enables **pre-merge integration testing** across repositories to catch inte
 
 ## Prerequisites
 
-- Go 1.23+
+- Go 1.25+
 - lacylights-go server running on port 4001 (for local testing)
 - (Optional) lacylights-fe server on port 3000 (for future E2E tests)
 - (Optional) Playwright for browser testing (future)

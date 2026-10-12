@@ -443,7 +443,7 @@ Tests serve as executable documentation:
 ## Tools and Technologies
 
 ### Current Stack
-- **Language**: Go 1.23+
+- **Language**: Go 1.25+
 - **Testing**: Go `testing` package, `testify` assertions
 - **API Testing**: Custom GraphQL client
 - **DMX Capture**: Custom Art-Net receiver
