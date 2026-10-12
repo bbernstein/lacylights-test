@@ -533,6 +533,12 @@ func TestExportDataWorkbook(t *testing.T) {
 		assert.Contains(t, err.Error(), "scopeId is required")
 	})
 
+	t.Run("GlobalTableRejected", func(t *testing.T) {
+		_, err := exportWorkbook(ctx, client, s.ProjectID, []string{"LOOKS", "FIXTURE_LIBRARY"})
+		require.Error(t, err, "FIXTURE_LIBRARY is global, not a project table, so it cannot be part of a workbook")
+		assert.Contains(t, err.Error(), "not a project table")
+	})
+
 	t.Run("EmptyTableListRejected", func(t *testing.T) {
 		// An explicit [] is distinct from omitting tables (default set).
 		_, err := exportWorkbook(ctx, client, s.ProjectID, []string{})

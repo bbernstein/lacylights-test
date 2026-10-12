@@ -94,8 +94,11 @@ func parseCSV(t *testing.T, res *exportResult) [][]string {
 	require.True(t, bytes.HasPrefix(raw, utf8BOM), "CSV must start with a UTF-8 BOM")
 	body := raw[len(utf8BOM):]
 	require.Contains(t, string(body), "\r\n", "CSV rows must end with CRLF")
+	// The server writes with encoding/csv UseCRLF, which also writes an LF
+	// inside a quoted field as CRLF (the reader turns it back into LF), so
+	// a bare LF anywhere means the line-ending contract is broken.
 	require.NotContains(t, string(bytes.ReplaceAll(body, []byte("\r\n"), nil)), "\n",
-		"CSV must not contain bare LF line endings (seeded data has no embedded newlines)")
+		"CSV must not contain bare LF line endings")
 
 	r := csv.NewReader(bytes.NewReader(body))
 	records, err := r.ReadAll()
