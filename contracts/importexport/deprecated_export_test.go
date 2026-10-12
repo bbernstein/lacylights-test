@@ -64,19 +64,25 @@ func TestProjectExportQueriesReplaceDeprecatedMutations(t *testing.T) {
 			assert.False(t, deprecated, "Query.%s must not be deprecated", name)
 		}
 
-		mutations := map[string]bool{}
+		// Each deprecated Mutation names its own replacement Query.
+		replacements := map[string]string{
+			"exportProject":      "Query.projectExport",
+			"exportProjectToQLC": "Query.projectExportQLC",
+			"exportProjectToEos": "Query.projectExportEos",
+		}
+		reasons := map[string]string{}
 		for _, f := range resp.Mutation.Fields {
 			if f.IsDeprecated {
-				mutations[f.Name] = true
-				require.NotNil(t, f.DeprecationReason)
-				if strings.HasPrefix(f.Name, "exportProject") {
-					assert.Contains(t, *f.DeprecationReason, "projectExport",
-						"deprecation reason for %s should point at the replacement Query", f.Name)
-				}
+				require.NotNil(t, f.DeprecationReason, "Mutation.%s deprecation reason", f.Name)
+				reasons[f.Name] = *f.DeprecationReason
 			}
 		}
-		for _, name := range []string{"exportProject", "exportProjectToQLC", "exportProjectToEos"} {
-			assert.True(t, mutations[name], "Mutation.%s must still exist and be marked deprecated", name)
+		for name, replacement := range replacements {
+			reason, ok := reasons[name]
+			if assert.True(t, ok, "Mutation.%s must still exist and be marked deprecated", name) {
+				assert.Equal(t, "Use "+replacement, reason,
+					"deprecation reason for %s should point at its replacement Query", name)
+			}
 		}
 	})
 
