@@ -200,6 +200,64 @@ func TestExportDataTable_XLSX(t *testing.T) {
 	}
 }
 
+// TestExportDataTable_XLSXCellTypes checks that XLSX stores numbers as
+// numeric cells and text as string cells. GetRows renders every cell as a
+// string, so the shape checks above would not catch numbers written as
+// text (which spreadsheets cannot sum or sort numerically).
+func TestExportDataTable_XLSXCellTypes(t *testing.T) {
+	client, ctx := newClient(t)
+	s := seedProject(t, ctx, client)
+
+	// In OOXML a cell with no type attribute is a number, so excelize
+	// reports either CellTypeNumber or CellTypeUnset for numeric cells.
+	isNumeric := func(ct excelize.CellType) bool {
+		return ct == excelize.CellTypeNumber || ct == excelize.CellTypeUnset
+	}
+	isText := func(ct excelize.CellType) bool {
+		return ct == excelize.CellTypeSharedString || ct == excelize.CellTypeInlineString
+	}
+
+	// cellType opens a table export and returns the type of the cell in
+	// column colName on the row whose keyCol equals key.
+	cellType := func(t *testing.T, table, scopeID, keyCol, key, colName string) excelize.CellType {
+		t.Helper()
+		res, err := exportTable(ctx, client, s.ProjectID, table, "XLSX", scopeID)
+		require.NoError(t, err)
+		f, err := excelize.OpenReader(bytes.NewReader(decodeContent(t, res)))
+		require.NoError(t, err)
+		defer func() { _ = f.Close() }()
+		sheet := labelOf(table)
+		rows, err := f.GetRows(sheet)
+		require.NoError(t, err)
+		require.NotEmpty(t, rows)
+		keyIdx, colIdx := column(t, rows[0], keyCol), column(t, rows[0], colName)
+		for i, r := range rows[1:] {
+			if keyIdx < len(r) && r[keyIdx] == key {
+				ref, err := excelize.CoordinatesToCellName(colIdx+1, i+2)
+				require.NoError(t, err)
+				ct, err := f.GetCellType(sheet, ref)
+				require.NoError(t, err)
+				return ct
+			}
+		}
+		t.Fatalf("%s: no row with %s=%q", table, keyCol, key)
+		return excelize.CellTypeUnset
+	}
+
+	t.Run("IntegerCell", func(t *testing.T) {
+		ct := cellType(t, "FIXTURES", "", "Name", "RGB Par", "Start channel")
+		assert.True(t, isNumeric(ct), "Fixtures 'Start channel' must be a numeric cell, got type %v", ct)
+	})
+	t.Run("FractionalCell", func(t *testing.T) {
+		ct := cellType(t, "CUE_LIST_DETAILS", s.MainCueListID, "Name", "Point Five", "Cue #")
+		assert.True(t, isNumeric(ct), "Cue List Details 'Cue #' 2.5 must be a numeric cell, got type %v", ct)
+	})
+	t.Run("TextCell", func(t *testing.T) {
+		ct := cellType(t, "FIXTURES", "", "Name", "RGB Par", "Model")
+		assert.True(t, isText(ct), "Fixtures 'Model' must be a string cell, got type %v", ct)
+	})
+}
+
 // TestExportDataTable_Content spot-checks cell values in each table so
 // the exported data (not just its shape) matches what was seeded.
 func TestExportDataTable_Content(t *testing.T) {

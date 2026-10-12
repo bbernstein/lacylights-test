@@ -86,6 +86,89 @@ func TestProjectExportQueriesReplaceDeprecatedMutations(t *testing.T) {
 		}
 	})
 
+	t.Run("SignatureParity", func(t *testing.T) {
+		// Older frontends call the Mutations with the same arguments the
+		// Queries take, so argument names, argument types (including
+		// nullability and list wrapping) and the return type must match.
+		type typeRef struct {
+			Kind   string   `json:"kind"`
+			Name   *string  `json:"name"`
+			OfType *typeRef `json:"ofType"`
+		}
+		var render func(r *typeRef) string
+		render = func(r *typeRef) string {
+			if r == nil {
+				return "<nil>"
+			}
+			switch r.Kind {
+			case "NON_NULL":
+				return render(r.OfType) + "!"
+			case "LIST":
+				return "[" + render(r.OfType) + "]"
+			}
+			if r.Name == nil {
+				return "<unnamed>"
+			}
+			return *r.Name
+		}
+		type field struct {
+			Name string `json:"name"`
+			Args []struct {
+				Name string  `json:"name"`
+				Type typeRef `json:"type"`
+			} `json:"args"`
+			Type typeRef `json:"type"`
+		}
+		var resp struct {
+			Query struct {
+				Fields []field `json:"fields"`
+			} `json:"query"`
+			Mutation struct {
+				Fields []field `json:"fields"`
+			} `json:"mutation"`
+		}
+		const typeFields = `kind name ofType { kind name ofType { kind name ofType { kind name } } }`
+		const fieldSel = `fields(includeDeprecated: true) {
+			name
+			args { name type { ` + typeFields + ` } }
+			type { ` + typeFields + ` }
+		}`
+		require.NoError(t, client.Query(ctx, `
+			query {
+				query: __type(name: "Query") { `+fieldSel+` }
+				mutation: __type(name: "Mutation") { `+fieldSel+` }
+			}
+		`, nil, &resp))
+
+		// signature renders a field as "(arg: Type, ...): Return", with
+		// arguments in declaration order.
+		signature := func(fields []field, name string) (string, bool) {
+			for _, f := range fields {
+				if f.Name != name {
+					continue
+				}
+				args := make([]string, 0, len(f.Args))
+				for _, a := range f.Args {
+					args = append(args, a.Name+": "+render(&a.Type))
+				}
+				return "(" + strings.Join(args, ", ") + "): " + render(&f.Type), true
+			}
+			return "", false
+		}
+		pairs := map[string]string{
+			"projectExport":    "exportProject",
+			"projectExportQLC": "exportProjectToQLC",
+			"projectExportEos": "exportProjectToEos",
+		}
+		for queryName, mutationName := range pairs {
+			q, okQ := signature(resp.Query.Fields, queryName)
+			m, okM := signature(resp.Mutation.Fields, mutationName)
+			require.True(t, okQ, "Query.%s must exist", queryName)
+			require.True(t, okM, "Mutation.%s must exist", mutationName)
+			assert.Equal(t, m, q, "Query.%s signature must match Mutation.%s", queryName, mutationName)
+		}
+	})
+
 	t.Run("DeprecatedMutationsStillWork", func(t *testing.T) {
 		projectID := setupExportTest(t, client, ctx)
 		defer deleteProject(t, client, ctx, projectID)
