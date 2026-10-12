@@ -141,6 +141,8 @@ func TestProjectExportQueriesReplaceDeprecatedMutations(t *testing.T) {
 		assert.Equal(t, projectID, eosMut.ExportProjectToEos.ProjectID)
 		assert.NotEmpty(t, eosMut.ExportProjectToEos.ASCIIContent)
 		assert.Equal(t, eosQuery.ProjectExportEos.ProjectID, eosMut.ExportProjectToEos.ProjectID)
+		assert.Equal(t, eosMut.ExportProjectToEos.ASCIIContent, eosQuery.ProjectExportEos.ASCIIContent,
+			"Mutation and Query must return the same Eos ASCII content")
 
 		// QLC+: same counts from both, unless QLC+ export is unavailable on
 		// this platform (then both must fail the same way).
@@ -165,6 +167,8 @@ func TestProjectExportQueriesReplaceDeprecatedMutations(t *testing.T) {
 			vars, &qlcQuery)
 		if mutErr != nil && strings.Contains(mutErr.Error(), "not available") {
 			require.Error(t, queryErr, "Query must fail like the Mutation when QLC+ is unavailable")
+			assert.Contains(t, queryErr.Error(), "QLC+ export not available",
+				"Query must fail with the QLC+ unavailable error, not an unrelated one")
 			return
 		}
 		require.NoError(t, mutErr)

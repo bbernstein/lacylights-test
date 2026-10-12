@@ -91,12 +91,17 @@ func createProject(t *testing.T, ctx context.Context, client *graphql.Client, na
 	`, map[string]interface{}{"input": map[string]interface{}{"name": name}})
 }
 
+// deleteProject removes a test project for good: deleteProject only
+// soft-deletes, and the soft-deleted fixtures would keep referencing (and
+// so block deletion of) the global fixture definitions, so the project is
+// then permanently deleted. Best effort; errors are ignored.
 func deleteProject(ctx context.Context, client *graphql.Client, id string) {
 	if id == "" {
 		return
 	}
-	_ = client.Mutate(ctx, `mutation($id: ID!) { deleteProject(id: $id) }`,
-		map[string]interface{}{"id": id}, nil)
+	vars := map[string]interface{}{"id": id}
+	_ = client.Mutate(ctx, `mutation($id: ID!) { deleteProject(id: $id) }`, vars, nil)
+	_ = client.Mutate(ctx, `mutation($id: ID!) { permanentlyDeleteProject(id: $id) }`, vars, nil)
 }
 
 func createDefinition(t *testing.T, ctx context.Context, client *graphql.Client, manufacturer, model, fixtureType string, channels []map[string]interface{}) string {
@@ -205,12 +210,16 @@ func seedProject(t *testing.T, ctx context.Context, client *graphql.Client) *see
 		defer cancel()
 		deleteProject(cctx, client, s.ProjectID)
 		deleteProject(cctx, client, s.OtherProjectID)
-		// Best effort: definitions may still be referenced by soft-deleted
-		// fixtures, in which case the server refuses and they remain.
+		// The projects are gone for good, so nothing references the
+		// per-run definitions any more; failing to delete them would leak
+		// two global FIXTURE_LIBRARY rows per run.
 		for _, id := range []string{s.DimmerDefID, s.RGBDefID} {
-			if id != "" {
-				_ = client.Mutate(cctx, `mutation($id: ID!) { deleteFixtureDefinition(id: $id) }`,
-					map[string]interface{}{"id": id}, nil)
+			if id == "" {
+				continue
+			}
+			if err := client.Mutate(cctx, `mutation($id: ID!) { deleteFixtureDefinition(id: $id) }`,
+				map[string]interface{}{"id": id}, nil); err != nil {
+				t.Errorf("cleanup: deleting fixture definition %s: %v", id, err)
 			}
 		}
 	})

@@ -501,26 +501,57 @@ func TestExportDataTable_Errors(t *testing.T) {
 }
 
 // TestExportDataTable_CellEscaping checks that user-entered text survives
-// export safely: CSV quotes commas and quotes (RFC 4180) and prefixes
-// formula-like strings with a single quote (CSV injection); XLSX stores
-// the same text as a plain string, never as a formula.
+// export safely: CSV quotes commas, quotes and line breaks (RFC 4180) and
+// prefixes text starting with any formula character (= + - @ TAB CR) with
+// a single quote (CSV injection); XLSX stores the same text as a plain
+// string, never as a formula.
 func TestExportDataTable_CellEscaping(t *testing.T) {
 	client, ctx := newClient(t)
 	projectID := createProject(t, ctx, client, fmt.Sprintf("DataExport Escaping %d", time.Now().UnixNano()))
 	t.Cleanup(func() { deleteProject(context.Background(), client, projectID) })
 
-	const formulaName = "=1+1"
-	const quotedName = `Wash, "warm"`
-	createLook(t, ctx, client, projectID, formulaName, []map[string]interface{}{})
-	createLook(t, ctx, client, projectID, quotedName, []map[string]interface{}{})
+	// One look per formula-leading character the CSV export must neutralise,
+	// with the Name cell expected in the CSV. The server writes CSV with
+	// CRLF line endings (encoding/csv UseCRLF), which drops a bare CR inside
+	// a field, so "\rCR lead" is exported as "'CR lead": the CR is lost but
+	// the injection guard (leading single quote) must still be applied.
+	formulaCases := []struct{ name, csv string }{
+		{"=1+1", "'=1+1"},
+		{"+1+1", "'+1+1"},
+		{"-1+1", "'-1+1"},
+		{"@SUM(A1)", "'@SUM(A1)"},
+		{"\tTab lead", "'\tTab lead"},
+		{"\rCR lead", "'CR lead"},
+	}
+	formulaNames := make([]string, 0, len(formulaCases))
+	for _, c := range formulaCases {
+		formulaNames = append(formulaNames, c.name)
+	}
+	// Text that must round-trip unchanged: commas and quotes, an embedded
+	// LF (quoted, not a formula prefix), and a formula character that is
+	// not in the first position.
+	plainNames := []string{
+		`Wash, "warm"`,
+		"Line one\nLine two",
+		"Total =1+1",
+	}
+	for _, name := range append(append([]string{}, formulaNames...), plainNames...) {
+		createLook(t, ctx, client, projectID, name, []map[string]interface{}{})
+	}
 
 	t.Run("CSV", func(t *testing.T) {
 		res, err := exportTable(ctx, client, projectID, "LOOKS", "CSV", "")
 		require.NoError(t, err)
 		byName := rowsBy(t, parseCSV(t, res), "Name")
-		assert.Contains(t, byName, "'"+formulaName, "formula-like text is prefixed with a single quote")
-		assert.NotContains(t, byName, formulaName)
-		assert.Contains(t, byName, quotedName, "commas and quotes round-trip through CSV quoting")
+		for _, c := range formulaCases {
+			assert.Contains(t, byName, c.csv, "formula-like text %q is prefixed with a single quote", c.name)
+			assert.NotContains(t, byName, c.name, "formula-like text %q must not be exported raw", c.name)
+		}
+		assert.NotContains(t, byName, "CR lead", "CR-leading text must keep its quote prefix")
+		for _, name := range plainNames {
+			assert.Contains(t, byName, name, "%q round-trips through CSV quoting unchanged", name)
+			assert.NotContains(t, byName, "'"+name, "%q must not be quote-prefixed", name)
+		}
 	})
 
 	t.Run("XLSX", func(t *testing.T) {
@@ -537,10 +568,11 @@ func TestExportDataTable_CellEscaping(t *testing.T) {
 			cellRef, _ := excelize.CoordinatesToCellName(1, i+2)
 			names[r[0]] = cellRef
 		}
-		require.Contains(t, names, formulaName, "XLSX keeps the text as-is")
-		require.Contains(t, names, quotedName)
-		formula, err := f.GetCellFormula("Looks", names[formulaName])
-		require.NoError(t, err)
-		assert.Empty(t, formula, "formula-like text must not be stored as a formula")
+		for _, name := range append(append([]string{}, formulaNames...), plainNames...) {
+			require.Contains(t, names, name, "XLSX keeps %q as-is", name)
+			formula, err := f.GetCellFormula("Looks", names[name])
+			require.NoError(t, err)
+			assert.Empty(t, formula, "%q must not be stored as a formula", name)
+		}
 	})
 }
