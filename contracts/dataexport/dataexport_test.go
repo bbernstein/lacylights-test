@@ -218,8 +218,10 @@ func TestExportDataTable_XLSXCellTypes(t *testing.T) {
 	}
 
 	// cellType opens a table export and returns the type of the cell in
-	// column colName on the row whose keyCol equals key.
-	cellType := func(t *testing.T, table, scopeID, keyCol, key, colName string) excelize.CellType {
+	// column colName on the row whose keyCol equals key, after checking
+	// that the cell holds want (an absent cell would also report
+	// CellTypeUnset).
+	cellType := func(t *testing.T, table, scopeID, keyCol, key, colName, want string) excelize.CellType {
 		t.Helper()
 		res, err := exportTable(ctx, client, s.ProjectID, table, "XLSX", scopeID)
 		require.NoError(t, err)
@@ -233,6 +235,8 @@ func TestExportDataTable_XLSXCellTypes(t *testing.T) {
 		keyIdx, colIdx := column(t, rows[0], keyCol), column(t, rows[0], colName)
 		for i, r := range rows[1:] {
 			if keyIdx < len(r) && r[keyIdx] == key {
+				require.Less(t, colIdx, len(r), "%s row %q has no %q cell", table, key, colName)
+				require.Equal(t, want, r[colIdx], "%s row %q column %q", table, key, colName)
 				ref, err := excelize.CoordinatesToCellName(colIdx+1, i+2)
 				require.NoError(t, err)
 				ct, err := f.GetCellType(sheet, ref)
@@ -245,17 +249,35 @@ func TestExportDataTable_XLSXCellTypes(t *testing.T) {
 	}
 
 	t.Run("IntegerCell", func(t *testing.T) {
-		ct := cellType(t, "FIXTURES", "", "Name", "RGB Par", "Start channel")
+		ct := cellType(t, "FIXTURES", "", "Name", "RGB Par", "Start channel", "10")
 		assert.True(t, isNumeric(ct), "Fixtures 'Start channel' must be a numeric cell, got type %v", ct)
 	})
 	t.Run("FractionalCell", func(t *testing.T) {
-		ct := cellType(t, "CUE_LIST_DETAILS", s.MainCueListID, "Name", "Point Five", "Cue #")
+		ct := cellType(t, "CUE_LIST_DETAILS", s.MainCueListID, "Name", "Point Five", "Cue #", "2.5")
 		assert.True(t, isNumeric(ct), "Cue List Details 'Cue #' 2.5 must be a numeric cell, got type %v", ct)
 	})
 	t.Run("TextCell", func(t *testing.T) {
-		ct := cellType(t, "FIXTURES", "", "Name", "RGB Par", "Model")
+		ct := cellType(t, "FIXTURES", "", "Name", "RGB Par", "Model", "RGB3")
 		assert.True(t, isText(ct), "Fixtures 'Model' must be a string cell, got type %v", ct)
 	})
+}
+
+// TestExportDataTable_FixtureLibraryIgnoresProject checks that the global
+// fixture library is not filtered by projectId: FIXTURE_LIBRARY has no
+// scope and the server uses projectId only for the access check, so the
+// export must contain the same rows with and without it.
+func TestExportDataTable_FixtureLibraryIgnoresProject(t *testing.T) {
+	client, ctx := newClient(t)
+	s := seedProject(t, ctx, client)
+
+	without, err := exportTable(ctx, client, "", "FIXTURE_LIBRARY", "CSV", "")
+	require.NoError(t, err)
+	with, err := exportTable(ctx, client, s.ProjectID, "FIXTURE_LIBRARY", "CSV", "")
+	require.NoError(t, err)
+
+	rowsWithout, rowsWith := parseCSV(t, without), parseCSV(t, with)
+	assert.Equal(t, without.RowCount, with.RowCount, "rowCount with and without projectId")
+	assert.Equal(t, rowsWithout, rowsWith, "FIXTURE_LIBRARY rows must not depend on projectId")
 }
 
 // TestExportDataTable_Content spot-checks cell values in each table so
