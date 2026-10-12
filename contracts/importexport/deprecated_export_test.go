@@ -183,5 +183,7 @@ func TestProjectExportQueriesReplaceDeprecatedMutations(t *testing.T) {
 		assert.Equal(t, qlcQuery.ProjectExportQLC.LookCount, qlcMut.ExportProjectToQLC.LookCount)
 		assert.Equal(t, qlcQuery.ProjectExportQLC.CueListCount, qlcMut.ExportProjectToQLC.CueListCount)
 		assert.NotEmpty(t, qlcMut.ExportProjectToQLC.XMLContent)
+		assert.Equal(t, qlcMut.ExportProjectToQLC.XMLContent, qlcQuery.ProjectExportQLC.XMLContent,
+			"Mutation and Query must return the same QLC+ XML")
 	})
 }

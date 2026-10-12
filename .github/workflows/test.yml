@@ -113,10 +113,13 @@ jobs:
           go-version: "1.25"
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
-          args: ./...
+          # golangci-lint v2, built with Go 1.25 (the v1 "latest" was built
+          # with Go 1.24 and refuses to lint a go 1.25 module). Pinned to
+          # match lacylights-go and the version used locally.
+          version: v2.6.2
+          args: --timeout=5m ./...
 
   e2e:
     runs-on: ubuntu-latest
