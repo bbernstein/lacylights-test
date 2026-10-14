@@ -1009,6 +1009,14 @@ func TestUnfadableChannelTypes(t *testing.T) {
 	t.Logf("SNAP_END channel: held at %d, reached target at frame %d",
 		snapEndHoldValue, snapEndReachedTarget)
 
+	// SNAP_END must hold the captured start value (0, fading up from black) for
+	// the entire duration of the fade and only jump to the target at the end.
+	// The modulator fade engine emits exactly the start value mid-fade (see
+	// TestFadeToLook_SnapEnd / _SnapEndFromZero in lacylights-go
+	// internal/services/modulator/fade_api_test.go, added by
+	// bbernstein/lacylights-go#96), so a fade up from black holds at exactly 0.
+	// Anything >0 means the channel is interpolating like a FADE channel - the
+	// exact bug this contract guards.
 	assert.Equal(t, 0, snapEndHoldValue,
 		"Gobo Rotation (SNAP_END) should hold at start value during fade")
 	assert.Greater(t, snapEndReachedTarget, 30,
@@ -1215,7 +1223,10 @@ func TestStrobeChannelSNAP(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	// Activate strobe-on look with 2-second fade
+	// Activate strobe-on look with 2-second fade. Record when the activation
+	// was requested so SNAP timing can be measured from activation rather than
+	// from capture start (capture begins ~100ms earlier).
+	activationRequestedAt := time.Now()
 	err = client.Mutate(ctx, `
 		mutation ActivateLookFromBoard($lookBoardId: ID!, $lookId: ID!, $fadeTimeOverride: Float) {
 			activateLookFromBoard(lookBoardId: $lookBoardId, lookId: $lookId, fadeTimeOverride: $fadeTimeOverride)
@@ -1226,16 +1237,28 @@ func TestStrobeChannelSNAP(t *testing.T) {
 		"fadeTimeOverride": 2.0,
 	}, nil)
 	require.NoError(t, err)
+	activationReturnedAt := time.Now()
+	activationLatency := activationReturnedAt.Sub(activationRequestedAt)
 
 	frames := <-frameChan
-	t.Logf("Captured %d frames during strobe transition", len(frames))
+	t.Logf("Captured %d frames during strobe transition (activation mutation took %v)",
+		len(frames), activationLatency)
 
-	// Verify strobe channel jumps immediately without intermediate values
-	intermediateStrobeValues := make(map[int]int) // value -> count
-	strobeReachedTarget := -1
-
+	// Verify strobe channel jumps immediately without intermediate values.
+	//
+	// SNAP timing is measured from activation, not as an absolute index into
+	// the capture (which starts ~100ms early). The strobe cannot be its own
+	// baseline (its first change IS the SNAP), so count the frames received
+	// after the activation mutation returned while the strobe was still below
+	// target. Measuring from the response keeps HTTP latency out of the budget.
 	// Note: Universe 1 in API = Universe 0 in Art-Net protocol
-	for i, frame := range frames {
+	intermediateStrobeValues := make(map[int]int) // value -> count
+	strobeReachedTarget := -1                     // frame index (universe 0 frames) where strobe hit 200
+	var strobeReachedTargetAt time.Time
+	framesAfterResponseBeforeTarget := 0
+	universeFrame := 0
+
+	for _, frame := range frames {
 		if frame.Universe != 0 {
 			continue
 		}
@@ -1248,20 +1271,37 @@ func TestStrobeChannelSNAP(t *testing.T) {
 		}
 
 		if strobe >= 200 && strobeReachedTarget < 0 {
-			strobeReachedTarget = i
+			strobeReachedTarget = universeFrame
+			strobeReachedTargetAt = frame.Timestamp
 		}
+		if strobeReachedTarget < 0 && !frame.Timestamp.Before(activationReturnedAt) {
+			framesAfterResponseBeforeTarget++
+		}
+		universeFrame++
 	}
 
-	t.Logf("Strobe reached target (200) at frame %d", strobeReachedTarget)
+	t.Logf("Strobe reached target (200) at universe-0 frame %d of the capture, %v after activation was requested, %d frame(s) after the mutation returned",
+		strobeReachedTarget, strobeReachedTargetAt.Sub(activationRequestedAt), framesAfterResponseBeforeTarget)
 	t.Logf("Intermediate strobe values found: %v", intermediateStrobeValues)
+
+	require.GreaterOrEqual(t, strobeReachedTarget, 0,
+		"Strobe (SNAP) never reached its target (200) during capture")
+	// If the strobe was already at target before the activation request, the
+	// timing assertion below is meaningless (its counter would be 0), so stop
+	// here. Reaching target after the request but before the response is fine:
+	// the server may legitimately snap before replying.
+	require.False(t, strobeReachedTargetAt.Before(activationRequestedAt),
+		"Strobe was already at its target before the strobe-on look activation was requested")
 
 	// SNAP channels should NOT have intermediate values
 	assert.Empty(t, intermediateStrobeValues,
 		"Strobe (SNAP) should not have intermediate values during fade")
 
-	// Strobe should reach target very quickly (within first few frames)
-	assert.LessOrEqual(t, strobeReachedTarget, 5,
-		"Strobe (SNAP) should reach target within first 5 frames")
+	// Strobe should reach target very quickly: within maxSnapFrames frames of
+	// the activation mutation returning (~113ms at 44Hz).
+	const maxSnapFrames = 5
+	assert.LessOrEqual(t, framesAfterResponseBeforeTarget, maxSnapFrames,
+		"Strobe (SNAP) should reach target within %d frames of activation", maxSnapFrames)
 }
 
 // TestColorMacroChannelSNAP tests that color macro/preset channels
