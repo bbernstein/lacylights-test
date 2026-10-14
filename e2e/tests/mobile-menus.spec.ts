@@ -267,12 +267,23 @@ test.describe("Menus on a touch phone", () => {
 
     const list = sheet.locator(".overflow-y-auto").first();
     const listBox = await list.boundingBox();
+    // Swipe towards the side with more room. The target row can end up at
+    // the very bottom of the list (depending on how many other projects the
+    // backend holds); a swipe that cannot scroll would pass vacuously.
+    const { scrollTop, maxScroll } = await list.evaluate((el) => ({
+      scrollTop: el.scrollTop,
+      maxScroll: el.scrollHeight - el.clientHeight,
+    }));
+    const scrollDown = maxScroll - scrollTop >= scrollTop;
+    const room = scrollDown ? maxScroll - scrollTop : scrollTop;
+    expect(room, "the project list can scroll in the swipe direction").toBeGreaterThanOrEqual(100);
     // CDP is Chromium-only; this file runs in the chromium project only.
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Input.synthesizeScrollGesture", {
       x: Math.round(listBox!.x + 30),
-      y: Math.round(listBox!.y + listBox!.height * 0.6),
-      yDistance: -200,
+      y: Math.round(listBox!.y + listBox!.height * 0.5),
+      // Negative yDistance scrolls the content down (finger moves up).
+      yDistance: scrollDown ? -200 : 200,
       gestureSourceType: "touch",
       speed: 800,
     });
