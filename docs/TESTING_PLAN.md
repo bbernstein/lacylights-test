@@ -36,7 +36,7 @@ The foundation of our testing is contract validation for the lacylights-go Graph
 - **OFL Import** (`contracts/ofl/`) - Open Fixture Library integration
 - **Playback** (`contracts/playback/`) - Cue list execution
 - **Settings** (`contracts/settings/`) - System configuration persistence
-- **Import/Export** (`contracts/importexport/`) - Data portability (project exports via `Query.projectExport*`; the deprecated export Mutations were removed in lacylights-go#87)
+- **Import/Export** (`contracts/importexport/`) - Data portability (project exports via `Query.projectExport*`; the deprecated `exportProject*` Mutations were removed in lacylights-go#93, per lacylights-go#87)
 - **Data Export** (`contracts/dataexport/`) - CSV/XLSX data-list exports (`dataExportTables`, `exportDataTable`, `exportDataWorkbook`)
 
 ### Integration Tests
