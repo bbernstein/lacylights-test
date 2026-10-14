@@ -26,10 +26,19 @@ const { defaultBrowserType: _phoneBrowser, ...pixel7 } = devices["Pixel 7"];
 const { defaultBrowserType: _tabletBrowser, ...ipadPro11 } = devices["iPad Pro 11"];
 
 const EXPORT_MENU = '[role="menu"][aria-label="Export options"]';
-const ROW_MENU = '[role="menu"]:not([aria-label="Export options"])';
+// The row menu is portaled to <body>, outside the sheet, so it is identified
+// by its item rather than by scope.
+const ROW_MENU_ITEM = /more export options/i;
 const suffix = `${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 100)}`;
 // "E2E Test " prefix: global setup deletes leftovers from aborted runs.
 const extraProjectName = (n: number) => `E2E Test Mobile Menu ${suffix} ${String(n).padStart(2, "0")}`;
+// Enough projects that the Manage Projects list scrolls on a phone.
+const EXTRA_PROJECT_COUNT = 12;
+// The row whose ⋯ menu tests 4-7 open (1-based, as in its name). A row near
+// the top keeps the menu below its button instead of flipped above it.
+const TARGET_ROW = 3;
+// The row menu is placed 4px below its button; allow a few px of rounding.
+const ROW_MENU_GAP_TOLERANCE = 8;
 
 async function viewport(page: Page): Promise<{ w: number; h: number }> {
   return page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
@@ -52,6 +61,18 @@ async function expectInsideViewport(page: Page, locator: Locator): Promise<void>
     expect(box!.x + box!.width).toBeLessThanOrEqual(v.w + 1);
     expect(box!.y + box!.height).toBeLessThanOrEqual(v.h + 1);
   }).toPass({ timeout: 2000 });
+}
+
+/**
+ * Waits until the element's box stops changing between two samples 100ms
+ * apart (e.g. a slide-up animation has finished).
+ */
+async function waitForStableBox(page: Page, locator: Locator): Promise<void> {
+  await expect(async () => {
+    const a = JSON.stringify(await locator.boundingBox());
+    await page.waitForTimeout(100);
+    expect(JSON.stringify(await locator.boundingBox())).toBe(a);
+  }).toPass({ timeout: 3000 });
 }
 
 /** Taps the centre of an element's current box, as a finger would (no auto-scroll / retries). */
@@ -85,8 +106,8 @@ test.describe("Menus on a touch phone", () => {
   const extraProjectIds: string[] = [];
 
   test.beforeAll(async () => {
-    // Enough projects that the Manage Projects list scrolls on a phone.
-    for (let i = 1; i <= 12; i++) {
+    // Sequential so extraProjectIds[i - 1] is project i.
+    for (let i = 1; i <= EXTRA_PROJECT_COUNT; i++) {
       const res = await graphql<{ createProject: { id: string } }>(
         `mutation CreateProject($input: CreateProjectInput!) { createProject(input: $input) { id } }`,
         { input: { name: extraProjectName(i) } }
@@ -97,9 +118,17 @@ test.describe("Menus on a touch phone", () => {
   });
 
   test.afterAll(async () => {
-    for (const id of extraProjectIds) {
-      await graphql(`mutation DeleteProject($id: ID!) { deleteProject(id: $id) }`, { id });
-    }
+    // Try every delete even if one fails; global setup's "E2E Test " prefix
+    // cleanup removes anything left over on the next run.
+    const results = await Promise.allSettled(
+      extraProjectIds.map((id) => graphql(`mutation DeleteProject($id: ID!) { deleteProject(id: $id) }`, { id }))
+    );
+    results.forEach((r, i) => {
+      if (r.status === "rejected" || r.value.errors) {
+        const reason = r.status === "rejected" ? String(r.reason) : JSON.stringify(r.value.errors);
+        console.warn(`cleanup: deleteProject ${extraProjectIds[i]} failed: ${reason}`);
+      }
+    });
   });
 
   test.beforeEach(async ({ page }) => {
@@ -181,15 +210,15 @@ test.describe("Menus on a touch phone", () => {
     const sheet = page.getByTestId("project-management-modal");
     await expect(sheet).toBeVisible();
     // Let the slide-up animation finish before measuring positions.
-    await page.waitForTimeout(400);
+    await waitForStableBox(page, sheet);
     return sheet;
   }
 
   async function openRowMenu(page: Page): Promise<{ button: Locator; menu: Locator }> {
-    const button = page.getByRole("button", { name: `More actions for ${extraProjectName(3)}`, exact: true });
+    const button = page.getByRole("button", { name: `More actions for ${extraProjectName(TARGET_ROW)}`, exact: true });
     await button.scrollIntoViewIfNeeded();
     await button.tap();
-    const menu = page.locator(ROW_MENU);
+    const menu = page.getByRole("menu").filter({ has: page.getByRole("menuitem", { name: ROW_MENU_ITEM }) });
     await expect(menu).toBeVisible();
     return { button, menu };
   }
@@ -199,9 +228,14 @@ test.describe("Menus on a touch phone", () => {
     const { button, menu } = await openRowMenu(page);
     await expectInsideViewport(page, menu);
 
-    const buttonBox = await button.boundingBox();
-    const menuBox = await menu.boundingBox();
-    expect(Math.abs(menuBox!.y - (buttonBox!.y + buttonBox!.height))).toBeLessThanOrEqual(8);
+    const buttonBox = (await button.boundingBox())!;
+    const menuBox = (await menu.boundingBox())!;
+    // Vertically: just below the button.
+    expect(Math.abs(menuBox.y - (buttonBox.y + buttonBox.height))).toBeLessThanOrEqual(ROW_MENU_GAP_TOLERANCE);
+    // Horizontally: the menu overlaps the button's column (it may be shifted
+    // left to stay inside the viewport, but not to an unrelated position).
+    expect(menuBox.x, "menu starts left of the button's right edge").toBeLessThan(buttonBox.x + buttonBox.width);
+    expect(menuBox.x + menuBox.width, "menu ends right of the button's left edge").toBeGreaterThan(buttonBox.x);
 
     await tapCenter(page, button);
     await expect(menu).toBeHidden();
@@ -210,12 +244,14 @@ test.describe("Menus on a touch phone", () => {
 
   test("5. A tap on the dimmed backdrop closes the row menu but not the sheet", async ({ page }) => {
     const sheet = await openManageProjects(page);
+    const sheetBox = (await sheet.boundingBox())!;
+    // On a Pixel 7 the sheet leaves a dimmed strip above it; if a layout
+    // change ever removes it this fails rather than silently skipping.
+    expect(sheetBox.y, "dimmed backdrop area above the sheet").toBeGreaterThanOrEqual(20);
     const { menu } = await openRowMenu(page);
-    const sheetBox = await sheet.boundingBox();
-    test.skip(sheetBox!.y < 20, "Sheet covers the whole screen; no backdrop area to tap");
 
     const v = await viewport(page);
-    await page.touchscreen.tap(v.w / 2, sheetBox!.y / 2);
+    await page.touchscreen.tap(v.w / 2, sheetBox.y / 2);
 
     await expect(menu).toBeHidden();
     await expect(sheet).toBeVisible();
@@ -231,6 +267,7 @@ test.describe("Menus on a touch phone", () => {
 
     const list = sheet.locator(".overflow-y-auto").first();
     const listBox = await list.boundingBox();
+    // CDP is Chromium-only; this file runs in the chromium project only.
     const cdp = await page.context().newCDPSession(page);
     await cdp.send("Input.synthesizeScrollGesture", {
       x: Math.round(listBox!.x + 30),
@@ -240,7 +277,12 @@ test.describe("Menus on a touch phone", () => {
       speed: 800,
     });
     await cdp.detach();
-    await page.waitForTimeout(300);
+    // Let any momentum scroll and the resulting dismissal settle.
+    await expect(async () => {
+      const a = await list.evaluate((el) => el.scrollTop);
+      await page.waitForTimeout(100);
+      expect(await list.evaluate((el) => el.scrollTop)).toBe(a);
+    }).toPass({ timeout: 3000 });
 
     // The menu is fixed-positioned: either the swipe is absorbed while it is
     // open (it stays next to its row) or the scroll closes it. It must never
@@ -254,9 +296,10 @@ test.describe("Menus on a touch phone", () => {
   test("7. Tapping the row menu item opens Import / Export for that project", async ({ page }) => {
     await openManageProjects(page);
     const { menu } = await openRowMenu(page);
-    await menu.getByRole("menuitem", { name: /more export options/i }).tap();
+    await menu.getByRole("menuitem", { name: ROW_MENU_ITEM }).tap();
 
-    await expect(page).toHaveURL(new RegExp(`/import-export/?\\?section=export&project=${extraProjectIds[2]}`));
+    const targetId = extraProjectIds[TARGET_ROW - 1];
+    await expect(page).toHaveURL(new RegExp(`/import-export/?\\?section=export&project=${targetId}`));
   });
 });
 
