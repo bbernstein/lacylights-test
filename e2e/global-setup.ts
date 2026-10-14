@@ -2,6 +2,7 @@ import { FullConfig } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 import { waitForService, waitForGraphQL } from "./helpers/wait";
+import { GRAPHQL_URL } from "./helpers/graphql";
 
 const PROJECT_FILE = path.join(__dirname, ".test-project.json");
 
@@ -19,12 +20,12 @@ async function globalSetup(config: FullConfig): Promise<void> {
   console.log("\n🚀 Setting up E2E test environment...\n");
 
   // Wait for backend to be ready (use GraphQL query as health check)
-  console.log("⏳ Waiting for backend on port 4001...");
+  console.log(`⏳ Waiting for backend at ${GRAPHQL_URL}...`);
   try {
-    await waitForGraphQL("http://localhost:4001/graphql", 10000);
+    await waitForGraphQL(GRAPHQL_URL, 10000);
     console.log("✅ Backend is ready");
   } catch (error) {
-    console.error("❌ Backend is not running on port 4001");
+    console.error(`❌ Backend is not running at ${GRAPHQL_URL}`);
     console.error("   Run: scripts/run-tests.sh e2e");
     console.error("   Or start backend manually: cd ../lacylights-go && PORT=4001 make run");
     throw error;
@@ -59,7 +60,7 @@ async function createTestProject(): Promise<void> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const projectName = `E2E Test ${timestamp}`;
 
-  const response = await fetch("http://localhost:4001/graphql", {
+  const response = await fetch(GRAPHQL_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -98,7 +99,7 @@ async function createTestProject(): Promise<void> {
 async function cleanupGlobalState(): Promise<void> {
   // Stop any active cue list
   try {
-    const stopResponse = await fetch("http://localhost:4001/graphql", {
+    const stopResponse = await fetch(GRAPHQL_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -121,7 +122,7 @@ async function cleanupGlobalState(): Promise<void> {
 
   // Fade to black to reset lighting state
   try {
-    await fetch("http://localhost:4001/graphql", {
+    await fetch(GRAPHQL_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -141,7 +142,7 @@ async function cleanupGlobalState(): Promise<void> {
 
   // Delete old E2E test projects (keep only last few to avoid clutter)
   try {
-    const projectsResponse = await fetch("http://localhost:4001/graphql", {
+    const projectsResponse = await fetch(GRAPHQL_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -166,7 +167,7 @@ async function cleanupGlobalState(): Promise<void> {
     // Delete all E2E test projects to ensure clean state
     for (const project of e2eProjects) {
       try {
-        await fetch("http://localhost:4001/graphql", {
+        await fetch(GRAPHQL_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
