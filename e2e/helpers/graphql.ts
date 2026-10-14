@@ -2,7 +2,8 @@
  * GraphQL client utilities for E2E test setup and teardown
  */
 
-const GRAPHQL_URL = "http://localhost:4001/graphql";
+// E2E_GRAPHQL_URL lets a local run target a backend on another port.
+const GRAPHQL_URL = process.env.E2E_GRAPHQL_URL || "http://localhost:4001/graphql";
 
 export interface GraphQLResponse<T = unknown> {
   data?: T;
