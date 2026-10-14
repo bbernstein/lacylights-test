@@ -1286,19 +1286,22 @@ func TestStrobeChannelSNAP(t *testing.T) {
 
 	require.GreaterOrEqual(t, strobeReachedTarget, 0,
 		"Strobe (SNAP) never reached its target (200) during capture")
-	// If the strobe was already at target before activation, the timing
-	// assertion below is meaningless (its counter would be 0), so stop here.
+	// If the strobe was already at target before the activation request, the
+	// timing assertion below is meaningless (its counter would be 0), so stop
+	// here. Reaching target after the request but before the response is fine:
+	// the server may legitimately snap before replying.
 	require.False(t, strobeReachedTargetAt.Before(activationRequestedAt),
-		"Strobe reached its target before the strobe-on look was activated")
+		"Strobe was already at its target before the strobe-on look activation was requested")
 
 	// SNAP channels should NOT have intermediate values
 	assert.Empty(t, intermediateStrobeValues,
 		"Strobe (SNAP) should not have intermediate values during fade")
 
-	// Strobe should reach target very quickly: within 5 frames of the
-	// activation mutation returning.
-	assert.LessOrEqual(t, framesAfterResponseBeforeTarget, 5,
-		"Strobe (SNAP) should reach target within 5 frames of activation")
+	// Strobe should reach target very quickly: within maxSnapFrames frames of
+	// the activation mutation returning (~113ms at 44Hz).
+	const maxSnapFrames = 5
+	assert.LessOrEqual(t, framesAfterResponseBeforeTarget, maxSnapFrames,
+		"Strobe (SNAP) should reach target within %d frames of activation", maxSnapFrames)
 }
 
 // TestColorMacroChannelSNAP tests that color macro/preset channels
