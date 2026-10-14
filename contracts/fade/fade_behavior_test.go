@@ -1011,10 +1011,12 @@ func TestUnfadableChannelTypes(t *testing.T) {
 
 	// SNAP_END must hold the captured start value (0, fading up from black) for
 	// the entire duration of the fade and only jump to the target at the end.
-	// The modulator fade engine emits exactly the start value mid-fade (see the
-	// lacylights-go unit tests TestFadeToLook_SnapEnd / _SnapEndFromZero), so a
-	// fade up from black holds at exactly 0. Anything >0 means the channel is
-	// interpolating like a FADE channel - the exact bug this contract guards.
+	// The modulator fade engine emits exactly the start value mid-fade (see
+	// TestFadeToLook_SnapEnd / _SnapEndFromZero in lacylights-go
+	// internal/services/modulator/fade_api_test.go, added by
+	// bbernstein/lacylights-go#96), so a fade up from black holds at exactly 0.
+	// Anything >0 means the channel is interpolating like a FADE channel - the
+	// exact bug this contract guards.
 	assert.Equal(t, 0, snapEndHoldValue,
 		"Gobo Rotation (SNAP_END) should hold at start value during fade")
 	assert.Greater(t, snapEndReachedTarget, 30,
@@ -1235,9 +1237,11 @@ func TestStrobeChannelSNAP(t *testing.T) {
 		"fadeTimeOverride": 2.0,
 	}, nil)
 	require.NoError(t, err)
+	activationLatency := time.Since(activationRequestedAt)
 
 	frames := <-frameChan
-	t.Logf("Captured %d frames during strobe transition", len(frames))
+	t.Logf("Captured %d frames during strobe transition (activation mutation took %v)",
+		len(frames), activationLatency)
 
 	// Verify strobe channel jumps immediately without intermediate values.
 	//
@@ -1278,7 +1282,7 @@ func TestStrobeChannelSNAP(t *testing.T) {
 		universeFrame++
 	}
 
-	t.Logf("Strobe reached target (200) at capture frame %d, %d frame(s) after activation was requested",
+	t.Logf("Strobe reached target (200) at universe-0 frame %d of the capture, %d frame(s) after activation was requested",
 		strobeReachedTarget, framesAfterActivationBeforeTarget)
 	t.Logf("Intermediate strobe values found: %v", intermediateStrobeValues)
 
