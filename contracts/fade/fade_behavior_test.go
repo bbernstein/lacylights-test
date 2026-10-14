@@ -1221,7 +1221,10 @@ func TestStrobeChannelSNAP(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 
-	// Activate strobe-on look with 2-second fade
+	// Activate strobe-on look with 2-second fade. Record when the activation
+	// was requested so SNAP timing can be measured from activation rather than
+	// from capture start (capture begins ~100ms earlier).
+	activationRequestedAt := time.Now()
 	err = client.Mutate(ctx, `
 		mutation ActivateLookFromBoard($lookBoardId: ID!, $lookId: ID!, $fadeTimeOverride: Float) {
 			activateLookFromBoard(lookBoardId: $lookBoardId, lookId: $lookId, fadeTimeOverride: $fadeTimeOverride)
@@ -1236,30 +1239,24 @@ func TestStrobeChannelSNAP(t *testing.T) {
 	frames := <-frameChan
 	t.Logf("Captured %d frames during strobe transition", len(frames))
 
-	// Verify strobe channel jumps immediately without intermediate values
-	intermediateStrobeValues := make(map[int]int) // value -> count
-	strobeReachedTarget := -1
-
-	// Establish an activation baseline: the first frame where the strobe
-	// channel becomes active (>0). SNAP timing must be measured RELATIVE to
-	// this activation frame, not the absolute capture-start index. Capture
-	// begins ~100ms before the look is activated (plus mutation HTTP latency),
-	// so an absolute frame index would always overshoot a "within N frames"
-	// bound. This mirrors the firstActiveFrame pattern in
-	// TestUnfadableChannelTypes.
+	// Verify strobe channel jumps immediately without intermediate values.
+	//
+	// SNAP timing is measured RELATIVE TO ACTIVATION, not as an absolute index
+	// into the capture: capture starts ~100ms before the look is activated (plus
+	// mutation HTTP latency), so an absolute frame index always overshoots a
+	// "within N frames" bound. The strobe channel itself cannot serve as the
+	// activation baseline (the first frame where it changes IS the frame where a
+	// SNAP reaches its target, which would make the bound tautological), and the
+	// dimmer is 255 in both looks, so instead count the frames transmitted after
+	// the activation was requested while the strobe had not yet reached target.
 	// Note: Universe 1 in API = Universe 0 in Art-Net protocol
-	firstActiveFrame := -1
-	for i, frame := range frames {
-		if frame.Universe != 0 {
-			continue
-		}
-		if int(frame.Channels[startChannel-1+1]) > 0 {
-			firstActiveFrame = i
-			break
-		}
-	}
+	intermediateStrobeValues := make(map[int]int) // value -> count
+	strobeReachedTarget := -1                     // frame index (universe 0 frames) where strobe hit 200
+	var strobeReachedTargetAt time.Time
+	framesAfterActivationBeforeTarget := 0
+	universeFrame := 0
 
-	for i, frame := range frames {
+	for _, frame := range frames {
 		if frame.Universe != 0 {
 			continue
 		}
@@ -1272,21 +1269,32 @@ func TestStrobeChannelSNAP(t *testing.T) {
 		}
 
 		if strobe >= 200 && strobeReachedTarget < 0 {
-			// Measure relative to activation, not capture start.
-			strobeReachedTarget = i - firstActiveFrame
+			strobeReachedTarget = universeFrame
+			strobeReachedTargetAt = frame.Timestamp
 		}
+		if strobeReachedTarget < 0 && !frame.Timestamp.Before(activationRequestedAt) {
+			framesAfterActivationBeforeTarget++
+		}
+		universeFrame++
 	}
 
-	t.Logf("Strobe reached target (200) at frame %d", strobeReachedTarget)
+	t.Logf("Strobe reached target (200) at capture frame %d, %d frame(s) after activation was requested",
+		strobeReachedTarget, framesAfterActivationBeforeTarget)
 	t.Logf("Intermediate strobe values found: %v", intermediateStrobeValues)
+
+	require.GreaterOrEqual(t, strobeReachedTarget, 0,
+		"Strobe (SNAP) never reached its target (200) during capture")
+	assert.False(t, strobeReachedTargetAt.Before(activationRequestedAt),
+		"Strobe reached its target before the strobe-on look was activated")
 
 	// SNAP channels should NOT have intermediate values
 	assert.Empty(t, intermediateStrobeValues,
 		"Strobe (SNAP) should not have intermediate values during fade")
 
-	// Strobe should reach target very quickly (within first few frames)
-	assert.LessOrEqual(t, strobeReachedTarget, 5,
-		"Strobe (SNAP) should reach target within first 5 frames")
+	// Strobe should reach target very quickly after activation (within the
+	// first few frames transmitted after the activation request).
+	assert.LessOrEqual(t, framesAfterActivationBeforeTarget, 5,
+		"Strobe (SNAP) should reach target within 5 frames of activation")
 }
 
 // TestColorMacroChannelSNAP tests that color macro/preset channels
