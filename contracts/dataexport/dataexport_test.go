@@ -34,19 +34,24 @@ var expectedHeaders = map[string][]string{
 		"Skip", "Notes"},
 }
 
-// Contract: table order, labels (also used as XLSX sheet names) and scopes.
+// Contract: table order, labels (also used as XLSX sheet names), scopes and
+// whether the scope ID is mandatory. The frontend shows a scope picker for
+// look/cueList/lookBoard scopes and uses scopeRequired to decide whether a
+// choice must be made before exporting; LOOK_BOARD_ENTRIES accepts an
+// optional board ID (omitted means "all boards").
 var expectedTables = []struct {
 	Table, Label, Scope string
+	ScopeRequired       bool
 }{
-	{"FIXTURE_TYPES", "Fixture Types", "project"},
-	{"FIXTURE_LIBRARY", "Fixture Library", "none"},
-	{"FIXTURES", "Fixtures", "project"},
-	{"LOOKS", "Looks", "project"},
-	{"LOOK_DETAILS", "Look Details", "look"},
-	{"EFFECTS", "Effects", "project"},
-	{"LOOK_BOARD_ENTRIES", "Look Board Entries", "lookBoard"},
-	{"CUE_LISTS", "Cue Lists", "project"},
-	{"CUE_LIST_DETAILS", "Cue List Details", "cueList"},
+	{"FIXTURE_TYPES", "Fixture Types", "project", false},
+	{"FIXTURE_LIBRARY", "Fixture Library", "none", false},
+	{"FIXTURES", "Fixtures", "project", false},
+	{"LOOKS", "Looks", "project", false},
+	{"LOOK_DETAILS", "Look Details", "look", true},
+	{"EFFECTS", "Effects", "project", false},
+	{"LOOK_BOARD_ENTRIES", "Look Board Entries", "lookBoard", false},
+	{"CUE_LISTS", "Cue Lists", "project", false},
+	{"CUE_LIST_DETAILS", "Cue List Details", "cueList", true},
 }
 
 func labelOf(table string) string {
@@ -74,13 +79,14 @@ func TestDataExportTables(t *testing.T) {
 
 	var resp struct {
 		DataExportTables []struct {
-			Table   string   `json:"table"`
-			Label   string   `json:"label"`
-			Scope   string   `json:"scope"`
-			Columns []string `json:"columns"`
+			Table         string   `json:"table"`
+			Label         string   `json:"label"`
+			Scope         string   `json:"scope"`
+			ScopeRequired *bool    `json:"scopeRequired"`
+			Columns       []string `json:"columns"`
 		} `json:"dataExportTables"`
 	}
-	require.NoError(t, client.Query(ctx, `query { dataExportTables { table label scope columns } }`, nil, &resp))
+	require.NoError(t, client.Query(ctx, `query { dataExportTables { table label scope scopeRequired columns } }`, nil, &resp))
 
 	got := resp.DataExportTables
 	require.Len(t, got, len(expectedTables), "one entry per DataExportTable enum value")
@@ -88,12 +94,54 @@ func TestDataExportTables(t *testing.T) {
 		assert.Equal(t, want.Table, got[i].Table, "table order")
 		assert.Equal(t, want.Label, got[i].Label, "label of %s", want.Table)
 		assert.Equal(t, want.Scope, got[i].Scope, "scope of %s", want.Table)
+		if assert.NotNil(t, got[i].ScopeRequired, "scopeRequired of %s must be non-null", want.Table) {
+			assert.Equal(t, want.ScopeRequired, *got[i].ScopeRequired, "scopeRequired of %s", want.Table)
+		}
 		wantCols := expectedHeaders[want.Table]
 		if want.Table == "LOOK_DETAILS" {
 			// The variable channel run is described by a trailing placeholder.
 			wantCols = append(append([]string{}, wantCols...), "Ch 1 … Ch N")
 		}
 		assert.Equal(t, wantCols, got[i].Columns, "columns of %s", want.Table)
+	}
+}
+
+// TestDataExportTables_ScopeRequiredMatchesEnforcement ties the advertised
+// scopeRequired flag to what exportDataTable actually enforces, so the
+// frontend can trust the flag instead of hard-coding table names: every
+// table that reports scopeRequired=true must reject a request without a
+// scopeId, and every table that reports false must export without one.
+func TestDataExportTables_ScopeRequiredMatchesEnforcement(t *testing.T) {
+	client, ctx := newClient(t)
+	s := seedProject(t, ctx, client)
+
+	var resp struct {
+		DataExportTables []struct {
+			Table         string `json:"table"`
+			Scope         string `json:"scope"`
+			ScopeRequired bool   `json:"scopeRequired"`
+		} `json:"dataExportTables"`
+	}
+	require.NoError(t, client.Query(ctx, `query { dataExportTables { table scope scopeRequired } }`, nil, &resp))
+	require.Len(t, resp.DataExportTables, len(expectedTables), "one entry per DataExportTable enum value")
+
+	for _, info := range resp.DataExportTables {
+		t.Run(info.Table, func(t *testing.T) {
+			projectID := s.ProjectID
+			if info.Scope == "none" {
+				projectID = ""
+			}
+			for _, format := range []string{"CSV", "XLSX"} {
+				res, err := exportTable(ctx, client, projectID, info.Table, format, "")
+				if info.ScopeRequired {
+					require.Error(t, err, "%s reports scopeRequired=true, so a %s export without scopeId must fail; got %+v", info.Table, format, res)
+					assert.Contains(t, err.Error(), "scopeId is required", "%s error message", format)
+				} else {
+					require.NoError(t, err, "%s reports scopeRequired=false, so a %s export without scopeId must succeed", info.Table, format)
+					assert.NotEmpty(t, res.ContentBase64, "%s %s export content", info.Table, format)
+				}
+			}
+		})
 	}
 }
 
