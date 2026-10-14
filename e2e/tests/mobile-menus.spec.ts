@@ -35,15 +35,23 @@ async function viewport(page: Page): Promise<{ w: number; h: number }> {
   return page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }));
 }
 
-/** Asserts the element's box lies fully inside the viewport (1px tolerance). */
+/**
+ * Asserts the element's box lies fully inside the viewport (1px tolerance).
+ * Retries briefly: the row menu (ContextMenu) first renders at the button's
+ * coordinates and moves itself back inside the viewport in an effect after
+ * paint, so a measurement taken right after it becomes visible can catch the
+ * pre-adjustment position.
+ */
 async function expectInsideViewport(page: Page, locator: Locator): Promise<void> {
-  const box = await locator.boundingBox();
-  const v = await viewport(page);
-  expect(box, "menu has a layout box").not.toBeNull();
-  expect(box!.x).toBeGreaterThanOrEqual(0);
-  expect(box!.y).toBeGreaterThanOrEqual(0);
-  expect(box!.x + box!.width).toBeLessThanOrEqual(v.w + 1);
-  expect(box!.y + box!.height).toBeLessThanOrEqual(v.h + 1);
+  await expect(async () => {
+    const box = await locator.boundingBox();
+    const v = await viewport(page);
+    expect(box, "element has a layout box").not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(v.w + 1);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(v.h + 1);
+  }).toPass({ timeout: 2000 });
 }
 
 /** Taps the centre of an element's current box, as a finger would (no auto-scroll / retries). */
@@ -143,8 +151,19 @@ test.describe("Menus on a touch phone", () => {
       const menu = page.locator(EXPORT_MENU);
       await expect(menu).toBeVisible();
       await expectInsideViewport(page, menu);
-      // Taller than the space left: the menu scrolls instead of overflowing.
-      await expect(menu.getByRole("menuitem", { name: /more import\/export/i })).toBeAttached();
+      // Taller than the space left: the menu scrolls instead of overflowing,
+      // so its last item can be scrolled into view without leaving the screen.
+      const scroll = await menu.evaluate((el) => ({
+        clipped: el.scrollHeight > el.clientHeight + 1,
+        overflowY: getComputedStyle(el).overflowY,
+      }));
+      if (scroll.clipped) {
+        expect(["auto", "scroll"], "a clipped menu must scroll").toContain(scroll.overflowY);
+      }
+      const lastItem = menu.getByRole("menuitem", { name: /more import\/export/i });
+      await lastItem.scrollIntoViewIfNeeded();
+      await expectInsideViewport(page, lastItem);
+      await expectInsideViewport(page, menu);
     } finally {
       await page.setViewportSize(portrait);
     }
@@ -205,6 +224,8 @@ test.describe("Menus on a touch phone", () => {
   test("6. Swiping the project list never leaves the row menu away from its row", async ({ page }) => {
     const sheet = await openManageProjects(page);
     const { button, menu } = await openRowMenu(page);
+    // Wait for the menu to settle into its final position before measuring.
+    await expectInsideViewport(page, menu);
     const offset = async () => (await menu.boundingBox())!.y - (await button.boundingBox())!.y;
     const before = await offset();
 
