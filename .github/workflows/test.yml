@@ -57,7 +57,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.27"
           cache-dependency-path: |
             go.sum
             lacylights-go/go.sum
@@ -110,19 +110,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.27"
 
       - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@v9
         with:
-          # golangci-lint v2, built with Go 1.25 (the v1 "latest" was built
-          # with Go 1.24 and refuses to lint a go 1.25 module). Pinned to
+          # golangci-lint v2, built with Go 1.27 (the v1 "latest" was built
+          # with Go 1.24 and refuses to lint a newer-Go module). Pinned to
           # match lacylights-go and the version used locally.
-          version: v2.6.2
+          version: v2.15.0
           args: --timeout=5m ./...
 
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest now resolves to 26.04, which Playwright 1.57 does not
+    # support for `install --with-deps`. Unpin once Playwright supports it.
+    runs-on: ubuntu-24.04
     needs: [lint]
     # E2E tests run backend on port 4001 to avoid conflicts with development (port 4000).
     # Playwright route interception proxies frontend requests from 4000 -> 4001.
@@ -160,13 +162,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.27"
           cache-dependency-path: lacylights-go/go.sum
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "26.x"
           cache: "npm"
           cache-dependency-path: |
             e2e/package-lock.json

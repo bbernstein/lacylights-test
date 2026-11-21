@@ -82,7 +82,12 @@ export class FixturesPage extends BasePage {
       // Use expect with timeout for more reliable waiting
       const modelOption = this.page
         .locator("button")
-        .filter({ hasText: new RegExp(`^${options.model}$`, "i") })
+        // Match the model name at the start, optionally followed by the
+        // "Source: ..." badge the option button renders. Still exact on the
+        // name, so "RGB Fader" does not match "DRGB Fader" or "RGB Fader Pro".
+        .filter({
+          hasText: new RegExp(`^${this.escapeRegex(options.model)}(?=\\s*Source:|\\s*$)`, "i"),
+        })
         .first();
       await expect(modelOption).toBeVisible({ timeout: TIMEOUTS.DROPDOWN_VISIBLE });
       await modelOption.click();
