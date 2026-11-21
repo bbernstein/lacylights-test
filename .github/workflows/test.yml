@@ -57,7 +57,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.27"
           cache-dependency-path: |
             go.sum
             lacylights-go/go.sum
@@ -110,7 +110,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.27"
 
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v8
@@ -160,13 +160,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.25"
+          go-version: "1.27"
           cache-dependency-path: lacylights-go/go.sum
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "26.x"
           cache: "npm"
           cache-dependency-path: |
             e2e/package-lock.json
