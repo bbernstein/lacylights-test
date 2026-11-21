@@ -122,7 +122,9 @@ jobs:
           args: --timeout=5m ./...
 
   e2e:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest now resolves to 26.04, which Playwright 1.57 does not
+    # support for `install --with-deps`. Unpin once Playwright supports it.
+    runs-on: ubuntu-24.04
     needs: [lint]
     # E2E tests run backend on port 4001 to avoid conflicts with development (port 4000).
     # Playwright route interception proxies frontend requests from 4000 -> 4001.
