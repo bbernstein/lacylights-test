@@ -65,6 +65,12 @@ jobs:
       # The shared-workflow tests need no server, so run them before the server build and start can
       # fail. continue-on-error keeps a failure here from skipping the contract tests; make test-ci runs
       # both suites again and fails the job if either fails, so neither can hide the other.
+      # Real `gh api --jq` evaluates filters with gojq; the fake gh uses gojq when it's on PATH.
+      - name: Install gojq
+        run: |
+          go install github.com/itchyny/gojq/cmd/gojq@v0.12.19
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Shared workflow tests (no server)
         continue-on-error: true
         run: make test-workflows

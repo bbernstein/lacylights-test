@@ -187,6 +187,10 @@ func writeJSON(t *testing.T, path string, v any) {
 // runSetup runs the workflow's setup step against sc and returns what it produced.
 func runSetup(t *testing.T, sc scenario) result {
 	t.Helper()
+	// gojq is what real gh uses for --jq; CI installs it (test.yml), so require it there.
+	if _, err := exec.LookPath("gojq"); err != nil && os.Getenv("CI") != "" {
+		t.Fatalf("gojq is required in CI (the fake gh evaluates --jq with it, like real gh): %v", err)
+	}
 	for _, tool := range []string{"bash", "jq"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			// GitHub runners have both, so a missing tool in CI is a real failure, not a skip.
@@ -1057,10 +1061,10 @@ func TestTopLevelAndStripParens(t *testing.T) {
 // (`make check-workflow-drift`, which sets INLINE_REVIEW_DRIFT_CHECK=1) compares each checked-out
 // sibling's origin/main copy with lacylights-test's origin/main copy, so a branch that is mid-change
 // doesn't fail it. Because it compares main branches, it finds drift once it has merged; run it after
-// the change has merged everywhere. A checked-out
-// sibling without the workflow on origin/main is an error. Local refs are used as-is (no network), so
-// fetch the repos first. Once opted in, anything that prevents a real comparison fails. CI doesn't run
-// it: the siblings aren't checked out there.
+// the change has merged everywhere. Local refs are used as-is (no network), so fetch the repos first. The known repos (or a worktree of one) must have an identical copy; other
+// lacylights checkouts are compared only if they have one, and are otherwise listed as not checked.
+// Once opted in, anything that prevents a real comparison fails. CI doesn't run it: the siblings aren't
+// checked out there.
 func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	// Opt-in, so routine runs (make test-ci, make test-workflows) never fail because of another repo's
 	// merge or fetch state. `make check-workflow-drift` turns it on.
@@ -1120,12 +1124,15 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	}()
 	// Worktrees share their repo's git directory. Skip any checkout whose common git directory is
 	// lacylights-test's own or a known repo's, so a worktree is never counted as another sibling.
+	// Needs git 2.31+ (--path-format). Anything but one absolute path fails the opted-in check, since a
+	// wrong answer would break the de-duplication silently.
 	commonDir := func(dir string) string {
 		out, err := exec.Command("git", "-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
-		if err != nil {
-			return ""
+		c := strings.TrimSpace(string(out))
+		if err != nil || strings.Contains(c, "\n") || !filepath.IsAbs(c) {
+			t.Fatalf("git rev-parse --git-common-dir in %s gave %q (%v); git 2.31+ and a readable repo are required", dir, c, err)
 		}
-		return strings.TrimSpace(string(out))
+		return c
 	}
 	seen := map[string]bool{}
 	viaWorktree := map[string]bool{} // known repos compared through a worktree
