@@ -894,28 +894,31 @@ func TestSkipConditionsInSync(t *testing.T) {
 		t.Fatalf("concurrency group condition must be wrapped in one pair of parentheses before %q: %q", suffix, raw)
 	}
 	cond := stripParens(raw)
+	// Cancel terms are the `github.event.action == '...'` comparisons; the one other term is the "will
+	// review" condition, which may be a single clause or an && chain.
+	cancelRe := regexp.MustCompile(`^github\.event\.action == '[a-z_]+'$`)
 	var groupClauses map[string]bool
 	cancelEvents := map[string]bool{}
 	for _, term := range topLevel(cond, "||") {
-		inner := stripParens(term)
-		if parts := topLevel(inner, "&&"); len(parts) > 1 {
-			if len(topLevel(inner, "||")) != 1 {
-				t.Fatalf("the group's && term has a top-level ||: %q", inner)
-			}
-			if groupClauses != nil {
-				t.Fatalf("concurrency group has more than one && term: %q", cond)
-			}
-			groupClauses = map[string]bool{}
-			for _, c := range parts {
-				// A redundant closed skip in the group is harmless (closed is routed to the review
-				// group by its own || term), so treat it like the job side does.
-				if c = normClause(c); c != closedSkip {
-					groupClauses[c] = true
-				}
-			}
+		inner := normClause(term)
+		if cancelRe.MatchString(inner) {
+			cancelEvents[inner] = true
 			continue
 		}
-		cancelEvents[normClause(inner)] = true
+		if groupClauses != nil {
+			t.Fatalf("concurrency group has more than one non-cancel term: %q", cond)
+		}
+		if len(topLevel(inner, "||")) != 1 {
+			t.Fatalf("the group's will-review term has a top-level ||: %q", inner)
+		}
+		groupClauses = map[string]bool{}
+		for _, c := range topLevel(inner, "&&") {
+			// A redundant closed skip in the group is harmless (closed is routed to the review
+			// group by its own || term), so treat it like the job side does.
+			if c = normClause(c); c != closedSkip {
+				groupClauses[c] = true
+			}
+		}
 	}
 	if groupClauses == nil {
 		t.Fatalf("concurrency group has no && term with the job's conditions: %q", cond)
