@@ -15,13 +15,16 @@
 #                  An entry of "fail" makes that call fail.
 #   FAKE_GH_FAIL   comma-separated keys that fail: pull, pull_files, comments, compare, compare_diff.
 #                  Like the real gh, a failure prints error JSON to stdout and exits 1.
-# Every call is appended to $FAKE_GH_DIR/calls.log.
+# Every call is appended to $FAKE_GH_DIR/calls.log. Every unknown endpoint or unsupported flag or header is
+# also appended to $FAKE_GH_DIR/refused.log, which the tests require to be empty: the step guards its gh
+# calls, so a 404 alone would only become a warning.
 set -euo pipefail
 
 dir=${FAKE_GH_DIR:?FAKE_GH_DIR must be set}
 echo "$*" >> "$dir/calls.log"
 
-[ "${1:-}" = api ] || { echo "fake gh: only 'gh api' is supported" >&2; exit 2; }
+refuse() { echo "$*" >> "$dir/refused.log"; echo "fake gh: $*" >&2; exit 2; }
+[ "${1:-}" = api ] || refuse "only 'gh api' is supported: $*"
 shift
 
 endpoint="" filter="" accept=""
@@ -30,7 +33,7 @@ while [ $# -gt 0 ]; do
     --paginate) shift ;;
     --jq) filter=$2; shift 2 ;;
     -H) accept=$2; shift 2 ;;
-    -*) echo "fake gh: unsupported flag $1" >&2; exit 2 ;;
+    -*) refuse "unsupported flag $1" ;;
     *) endpoint=$1; shift ;;
   esac
 done
@@ -47,13 +50,14 @@ elif [[ "$endpoint" =~ ^repos/$seg/$seg/compare/$seg$q$ ]]; then
   case "$accept" in
     "") key=compare ;;
     "Accept: application/vnd.github.diff") key=compare_diff ;;
-    *) echo "fake gh: unsupported header $accept" >&2; exit 2 ;;
+    *) refuse "unsupported header $accept" ;;
   esac
 else
+  echo "unknown endpoint $endpoint" >> "$dir/refused.log"
   echo '{"message":"Not Found","status":"404"}'; exit 1
 fi
 if [ -n "$accept" ] && [ "$key" != compare_diff ]; then
-  echo "fake gh: unexpected header $accept for $endpoint" >&2; exit 2
+  refuse "unexpected header $accept for $endpoint"
 fi
 
 case ",${FAKE_GH_FAIL:-}," in
