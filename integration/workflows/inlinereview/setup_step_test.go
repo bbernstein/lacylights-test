@@ -739,8 +739,8 @@ func TestTopLevelAndStripParens(t *testing.T) {
 // fetch the repos first. Once opted in, anything that prevents a real comparison fails. CI doesn't run
 // it: the siblings aren't checked out there.
 func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
-	// Opt-in, so routine runs (make test-ci) never fail because of another repo's merge or fetch
-	// state. `make test-workflows` turns it on.
+	// Opt-in, so routine runs (make test-ci, make test-workflows) never fail because of another repo's
+	// merge or fetch state. `make check-workflow-drift` turns it on.
 	if os.Getenv("INLINE_REVIEW_DRIFT_CHECK") != "1" {
 		t.Skip("run `make check-workflow-drift` (sets INLINE_REVIEW_DRIFT_CHECK=1) to compare sibling repos' copies")
 	}
@@ -766,10 +766,17 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		}
 	}
 	checked := 0
+	var notChecked []string
+	defer func() {
+		if len(notChecked) > 0 {
+			t.Logf("not checked (no checkout in %s): %s", root, strings.Join(notChecked, ", "))
+		}
+	}()
 	for _, repo := range []string{"lacylights-go", "lacylights-fe", "lacylights-mcp", "lacylights-rpi",
 		"lacylights-terraform", "lacylights-mac"} {
 		dir := filepath.Join(root, repo)
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+			notChecked = append(notChecked, repo)
 			continue
 		}
 		// lacylights-test has the workflow on main, so every checked-out sibling must have it too.
@@ -794,48 +801,72 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 // part of it must also change this test.
 func TestReviewerSandbox(t *testing.T) {
 	job := loadWorkflow(t).Jobs[jobName]
-	var checkout, review map[string]any
+	var checkouts, reviews []map[string]any
 	for _, st := range job.Steps {
 		switch {
 		case strings.HasPrefix(st.Uses, "actions/checkout@"):
-			checkout = st.With
+			checkouts = append(checkouts, st.With)
 		case strings.HasPrefix(st.Uses, "anthropics/claude-code-action@"):
-			review = st.With
+			reviews = append(reviews, st.With)
+		case st.Uses != "":
+			t.Errorf("unexpected action step %q; only checkout and claude-code-action are expected", st.Uses)
 		}
 	}
-	if checkout == nil || review == nil {
-		t.Fatalf("checkout or claude-code-action step not found")
+	if len(checkouts) != 1 || len(reviews) != 1 {
+		t.Fatalf("expected exactly one checkout and one claude-code-action step, got %d and %d", len(checkouts), len(reviews))
 	}
+	checkout, review := checkouts[0], reviews[0]
 	if checkout["persist-credentials"] != false {
 		t.Errorf("checkout must set persist-credentials: false, got %v", checkout["persist-credentials"])
 	}
 	if checkout["ref"] != "${{ github.event.pull_request.head.sha }}" {
 		t.Errorf("checkout must use the PR head SHA, got %v", checkout["ref"])
 	}
-
 	if got := job.Permissions; len(got) != 4 || got["contents"] != "read" || got["pull-requests"] != "read" ||
 		got["issues"] != "read" || got["id-token"] != "write" {
 		t.Errorf("job permissions must be exactly contents/pull-requests/issues: read, id-token: write; got %v", got)
+	}
+	// Only these action inputs: anything else (for example `settings`) could change the sandbox.
+	wantKeys := map[string]bool{"claude_code_oauth_token": true, "allowed_bots": true, "prompt": true, "claude_args": true}
+	for k := range review {
+		if !wantKeys[k] {
+			t.Errorf("unexpected claude-code-action input %q; update the sandbox review if it is intended", k)
+		}
 	}
 	if review["allowed_bots"] != "dependabot[bot],claude[bot]" {
 		t.Errorf("allowed_bots must be exactly dependabot[bot],claude[bot]; got %v", review["allowed_bots"])
 	}
 
 	args, _ := review["claude_args"].(string)
-	// flag returns the quoted value of a flag that must appear exactly once.
-	flag := func(name string) string {
-		if n := strings.Count(args, name+" "); n != 1 {
-			t.Fatalf("claude_args must contain %s exactly once, found %d", name, n)
+	tokens, err := shellSplit(args)
+	if err != nil {
+		t.Fatalf("claude_args: %v", err)
+	}
+	// Every flag is --name followed by exactly one value. Anything else (a second value after a
+	// variadic flag, --name=value, an unknown flag) fails, because each could widen the sandbox.
+	want := map[string]bool{"--model": true, "--effort": true, "--max-turns": true,
+		"--permission-mode": true, "--allowed-tools": true, "--disallowed-tools": true}
+	got := map[string]string{}
+	for i := 0; i < len(tokens); i += 2 {
+		name := tokens[i]
+		if !want[name] {
+			t.Fatalf("claude_args: unexpected token %q at position %d (each flag must be one of %v followed by one value)", name, i, want)
 		}
-		rest := args[strings.Index(args, name+" ")+len(name)+1:]
-		if !strings.HasPrefix(rest, `"`) {
-			t.Fatalf("%s value must be quoted", name)
+		if _, dup := got[name]; dup {
+			t.Fatalf("claude_args: %s appears more than once", name)
 		}
-		end := strings.Index(rest[1:], `"`)
-		if end < 0 {
-			t.Fatalf("%s value has no closing quote", name)
+		if i+1 >= len(tokens) || strings.HasPrefix(tokens[i+1], "--") {
+			t.Fatalf("claude_args: %s has no value", name)
 		}
-		return rest[1 : 1+end]
+		got[name] = tokens[i+1]
+	}
+	for name := range want {
+		if _, ok := got[name]; !ok {
+			t.Errorf("claude_args is missing %s", name)
+		}
+	}
+	if got["--permission-mode"] != "default" {
+		t.Errorf("--permission-mode must be default (otherwise the mode depends on allowed_bots); got %q", got["--permission-mode"])
 	}
 	set := func(list string) map[string]bool {
 		m := map[string]bool{}
@@ -844,11 +875,8 @@ func TestReviewerSandbox(t *testing.T) {
 		}
 		return m
 	}
-	if n := strings.Count(args, "--permission-mode"); n != 1 || !strings.Contains(args, "--permission-mode default") {
-		t.Errorf("claude_args must set --permission-mode default exactly once (found %d --permission-mode)", n)
-	}
 	wantAllowed := set("Read(./**),Glob(./**),Grep(./**),mcp__github_inline_comment__create_inline_comment")
-	gotAllowed := set(flag("--allowed-tools"))
+	gotAllowed := set(got["--allowed-tools"])
 	for tool := range gotAllowed {
 		if !wantAllowed[tool] {
 			t.Errorf("--allowed-tools grants %q; the reviewer must get only %v", tool, wantAllowed)
@@ -859,16 +887,69 @@ func TestReviewerSandbox(t *testing.T) {
 			t.Errorf("--allowed-tools is missing %q", tool)
 		}
 	}
-	for _, alias := range []string{"--allowedTools", "--disallowedTools", "--dangerously-skip-permissions"} {
-		if strings.Contains(args, alias) {
-			t.Errorf("claude_args must not use %s", alias)
-		}
-	}
-	denied := set(flag("--disallowed-tools"))
+	denied := set(got["--disallowed-tools"])
 	for _, tool := range []string{"Bash", "WebFetch", "WebSearch", "Read(//proc/**)", "Read(//sys/**)",
 		"Read(//home/runner/work/_temp/**)", "Read(~/.claude/**)", "Read(~/.config/**)", "Read(./.git/config)"} {
 		if !denied[tool] {
 			t.Errorf("--disallowed-tools must include %q", tool)
+		}
+	}
+}
+
+// shellSplit splits s into words the way a POSIX shell would for plain words and double- or
+// single-quoted strings (no escapes or expansions, which claude_args doesn't use).
+func shellSplit(s string) ([]string, error) {
+	var words []string
+	var cur strings.Builder
+	inWord := false
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			} else {
+				cur.WriteByte(c)
+			}
+		case c == '"' || c == '\'':
+			quote, inWord = c, true
+		case c == ' ' || c == '\t' || c == '\n':
+			if inWord {
+				words = append(words, cur.String())
+				cur.Reset()
+				inWord = false
+			}
+		case c == '\\':
+			return nil, fmt.Errorf("backslash escapes are not supported")
+		default:
+			cur.WriteByte(c)
+			inWord = true
+		}
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("unterminated %c quote", quote)
+	}
+	if inWord {
+		words = append(words, cur.String())
+	}
+	return words, nil
+}
+
+func TestShellSplit(t *testing.T) {
+	cases := []struct {
+		in      string
+		want    []string
+		wantErr bool
+	}{
+		{`--a "x y" --b z`, []string{"--a", "x y", "--b", "z"}, false},
+		{"--a 'q'\n--b \"r(./**),s\"", []string{"--a", "q", "--b", "r(./**),s"}, false},
+		{`--a "open`, nil, true},
+	}
+	for _, tc := range cases {
+		got, err := shellSplit(tc.in)
+		if (err != nil) != tc.wantErr || strings.Join(got, "|") != strings.Join(tc.want, "|") {
+			t.Errorf("shellSplit(%q) = %q, %v; want %q, err=%v", tc.in, got, err, tc.want, tc.wantErr)
 		}
 	}
 }
