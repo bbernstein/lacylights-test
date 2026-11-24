@@ -26,6 +26,7 @@ make test-preview        # Run preview mode tests
 make test-settings       # Run settings contract tests
 make test-dataexport     # Run CSV/XLSX data export contract tests
 make test-integration    # Run integration tests
+make test-workflows      # Test the shared claude-inline-review workflow (no server)
 make test-distribution   # Run S3 distribution tests
 ```
 
@@ -65,6 +66,7 @@ lacylights-test/
 │   ├── preview/        # Preview session tests
 │   └── settings/       # System settings tests
 ├── integration/         # Cross-repo integration tests (future)
+│   └── workflows/      # Shared GitHub workflow tests (claude-inline-review setup step)
 ├── e2e/                # End-to-end tests (future)
 ├── stress/             # Performance tests (future)
 ├── pkg/                # Shared test utilities

@@ -45,6 +45,7 @@ The foundation of our testing is contract validation for the lacylights-go Graph
 
 - **Distribution** (`integration/distribution/`) - S3 binary downloads, checksums, version consistency
 - **Fade Rate Integration** - Cross-system fade timing validation
+- **Shared workflows** (`integration/workflows/inlinereview/`) - runs the inline shell of `.github/workflows/claude-inline-review.yml`, which is identical in every LacyLights repo, against a fake `gh`. It checks that the workflow's skip conditions stay in sync, and, when sibling repos are checked out next to this one, that every repo's copy is identical (`make test-workflows`)
 
 ### CI/CD Infrastructure
 

@@ -9,7 +9,7 @@ GO_SERVER_URL ?= http://localhost:4001/graphql
 # Art-Net settings (standard port 6454, localhost for testing)
 ARTNET_LISTEN_PORT ?= 6454
 
-.PHONY: all build clean test test-ci test-all test-contracts test-contracts-go \
+.PHONY: all build clean test test-ci test-all test-workflows test-contracts test-contracts-go \
         test-dmx test-fade test-effects test-preview test-settings test-undo test-dataexport lint help deps \
         start-go-server stop-go-server wait-for-server test-load run-load-tests \
         e2e e2e-ui e2e-setup e2e-headed
@@ -153,6 +153,11 @@ test-ci:
 	@echo "Running CI-safe tests (no Art-Net required)..."
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) SKIP_FADE_TESTS=1 \
 		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/dataexport/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/... ./contracts/settings/... ./contracts/undo/...
+	$(GO) test $(GOFLAGS) ./integration/workflows/...
+
+## test-workflows: Test the shared claude-inline-review workflow's setup step (no server needed)
+test-workflows:
+	$(GO) test $(GOFLAGS) -v ./integration/workflows/...
 
 ## test-all: Run all tests including integration tests
 test-all:
