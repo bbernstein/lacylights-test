@@ -2,6 +2,7 @@ package inlinereview
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -37,12 +38,17 @@ type workflow struct {
 		Group string `yaml:"group"`
 	} `yaml:"concurrency"`
 	Jobs map[string]struct {
-		If          string            `yaml:"if"`
-		Permissions map[string]string `yaml:"permissions"`
-		Env         map[string]string `yaml:"env"`
-		Defaults    map[string]any    `yaml:"defaults"`
-		Container   any               `yaml:"container"`
-		Steps       []struct {
+		If              string            `yaml:"if"`
+		Permissions     map[string]string `yaml:"permissions"`
+		Env             map[string]string `yaml:"env"`
+		Defaults        map[string]any    `yaml:"defaults"`
+		Container       any               `yaml:"container"`
+		RunsOn          any               `yaml:"runs-on"`
+		Services        any               `yaml:"services"`
+		ContinueOnError any               `yaml:"continue-on-error"`
+		TimeoutMinutes  int               `yaml:"timeout-minutes"`
+		Strategy        any               `yaml:"strategy"`
+		Steps           []struct {
 			Name             string            `yaml:"name"`
 			ID               string            `yaml:"id"`
 			Shell            string            `yaml:"shell"`
@@ -279,7 +285,7 @@ func assertClean(t *testing.T, r result) {
 	for name, body := range map[string]string{"pr-meta.md": r.meta, "pr.diff": r.diff, "prior-comments.md": r.prior} {
 		mustNotContain(t, name, body, `"message"`, `"status"`)
 	}
-	mustNotContain(t, "log", r.log, "integer expression expected", "unbound variable", "command not found")
+	mustNotContain(t, "log", r.log, "integer expression expected", "command not found", "jq: error", "syntax error")
 	want := map[string]bool{"pr-meta.md": true, "pr.diff": true, "prior-comments.md": true}
 	for _, n := range r.reviewFiles {
 		if !want[n] {
@@ -290,7 +296,9 @@ func assertClean(t *testing.T, r result) {
 
 // check is one expectation about a setup-step run.
 type check struct {
-	contains    map[string][]string // output name ("log", "meta", "diff", "prior") -> substrings it must contain
+	// Output names: "log", "meta", "diff", "prior", "calls" (the fake gh call log) and "outputs"
+	// (what the step wrote to $GITHUB_OUTPUT).
+	contains    map[string][]string // output name -> substrings it must contain
 	notContains map[string][]string // output name -> substrings it must not contain
 	emptyDiff   bool
 	emptyPrior  bool
@@ -828,7 +836,8 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	const wfFile = ".github/workflows/claude-inline-review.yml"
 	show := func(dir string) ([]byte, error) {
 		out, err := exec.Command("git", "-C", dir, "show", "origin/main:"+wfFile).Output()
-		if ee, ok := err.(*exec.ExitError); ok {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
 			return nil, fmt.Errorf("%v: %s", err, strings.TrimSpace(string(ee.Stderr)))
 		}
 		return out, err
@@ -900,6 +909,14 @@ func TestReviewerSandbox(t *testing.T) {
 	}
 	// No inherited environment or defaults: the Claude step and CLI inherit workflow- and job-level env
 	// (for example ANTHROPIC_BASE_URL would redirect the reviewer).
+	// A GitHub-hosted, fresh runner with no sidecars: a self-hosted runner would keep the token and the
+	// PR checkout on a persistent machine.
+	if job.RunsOn != "ubuntu-latest" || job.Services != nil || job.ContinueOnError != nil || job.Strategy != nil ||
+		job.TimeoutMinutes != 45 {
+		t.Errorf("job must run on ubuntu-latest with timeout-minutes 45 and no services, strategy or "+
+			"continue-on-error; got runs-on=%v services=%v strategy=%v continue-on-error=%v timeout=%d",
+			job.RunsOn, job.Services, job.Strategy, job.ContinueOnError, job.TimeoutMinutes)
+	}
 	if len(wf.Env) != 0 || len(wf.Defaults) != 0 || len(job.Env) != 0 || len(job.Defaults) != 0 || job.Container != nil {
 		t.Errorf("no workflow/job env, defaults or container expected; got workflow env=%v defaults=%v, job env=%v defaults=%v container=%v",
 			wf.Env, wf.Defaults, job.Env, job.Defaults, job.Container)
@@ -926,6 +943,17 @@ func TestReviewerSandbox(t *testing.T) {
 		t.Fatalf("expected %d steps, got %d", len(wantSteps), len(job.Steps))
 	}
 	sha := regexp.MustCompile(`@[0-9a-f]{40}$`)
+	// The token check's script, exactly: it decides whether the review runs at all.
+	wantTokenRun := `if [ -n "$CLAUDE_TOKEN" ]; then
+  echo "present=true" >> "$GITHUB_OUTPUT"
+else
+  echo "present=false" >> "$GITHUB_OUTPUT"
+  echo "::notice::CLAUDE_CODE_OAUTH_TOKEN is not available to this run (missing repo or Dependabot secret); skipping inline review."
+fi
+`
+	if got := job.Steps[0].Run; got != wantTokenRun {
+		t.Errorf("the %q step's run: script changed; review it for the sandbox and update this test:\n%s", wantSteps[0].name, got)
+	}
 	for i, want := range wantSteps {
 		st := job.Steps[i]
 		if st.Name != want.name {
@@ -950,6 +978,11 @@ func TestReviewerSandbox(t *testing.T) {
 			if st.Env[k] != v {
 				t.Errorf("step %q: env %s must be %q, got %q", st.Name, k, v, st.Env[k])
 			}
+		}
+		// Writing to $GITHUB_ENV or $GITHUB_PATH would change the environment of later steps, including
+		// the Claude step (for example ANTHROPIC_BASE_URL).
+		if strings.Contains(st.Run, "GITHUB_ENV") || strings.Contains(st.Run, "GITHUB_PATH") {
+			t.Errorf("step %q must not write to $GITHUB_ENV or $GITHUB_PATH", st.Name)
 		}
 		if st.Uses != "" && !sha.MatchString(st.Uses) {
 			t.Errorf("step %q: %q must be pinned to a full commit SHA", st.Name, st.Uses)
