@@ -43,12 +43,15 @@ type workflow struct {
 		Defaults    map[string]any    `yaml:"defaults"`
 		Container   any               `yaml:"container"`
 		Steps       []struct {
-			Name string            `yaml:"name"`
-			If   string            `yaml:"if"`
-			Uses string            `yaml:"uses"`
-			Run  string            `yaml:"run"`
-			With map[string]any    `yaml:"with"`
-			Env  map[string]string `yaml:"env"`
+			Name             string            `yaml:"name"`
+			ID               string            `yaml:"id"`
+			Shell            string            `yaml:"shell"`
+			WorkingDirectory string            `yaml:"working-directory"`
+			If               string            `yaml:"if"`
+			Uses             string            `yaml:"uses"`
+			Run              string            `yaml:"run"`
+			With             map[string]any    `yaml:"with"`
+			Env              map[string]string `yaml:"env"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -209,8 +212,10 @@ func runSetup(t *testing.T, sc scenario) result {
 		t.Fatal(err)
 	}
 
-	// The same shell options GitHub Actions uses for `run:` steps.
-	cmd := exec.Command("bash", "--noprofile", "--norc", "-eo", "pipefail", scriptPath)
+	// How GitHub Actions runs a Linux `run:` step that sets no shell: (`bash -e {0}`: no pipefail, and
+	// no --noprofile/--norc, which the minimal environment below makes moot). TestReviewerSandbox
+	// requires the step to set no shell, so this stays accurate.
+	cmd := exec.Command("bash", "-e", scriptPath)
 	cmd.Dir = work
 	// A minimal environment, so variables the caller happens to export (for example files_failed, or
 	// BASH_ENV, which non-interactive bash reads even with --noprofile --norc) can't change the run.
@@ -627,7 +632,20 @@ func unwrapExpr(s string) string {
 // inside parentheses, so `( a || b )` and `(a || b)` compare equal.
 func normClause(s string) string {
 	s = stripParens(strings.Join(strings.Fields(s), " "))
-	return strings.NewReplacer("( ", "(", " )", ")").Replace(s)
+	// Drop spaces just inside parentheses, but never inside '...' literals.
+	var b strings.Builder
+	inQuote := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == '\'' {
+			inQuote = !inQuote
+		}
+		if !inQuote && c == ' ' && ((i > 0 && s[i-1] == '(') || (i+1 < len(s) && s[i+1] == ')')) {
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 // The job's skip conditions are repeated in the concurrency group key: runs the job will skip get a
@@ -771,6 +789,15 @@ func TestTopLevelAndStripParens(t *testing.T) {
 		}
 	}
 	for in, want := range map[string]string{
+		"( a || b )":   "a || b",
+		"x( a )":       "x(a)",
+		"g == 'a ( b'": "g == 'a ( b'",
+	} {
+		if got := normClause(in); got != want {
+			t.Errorf("normClause(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{
 		"((a && b))":              "a && b",
 		"(a) && (b)":              "(a) && (b)",
 		"(a || (b && c))":         "a || (b && c)",
@@ -855,7 +882,10 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 // part of it must also change this test.
 func TestReviewerSandbox(t *testing.T) {
 	wf := loadWorkflow(t)
-	job := wf.Jobs[jobName]
+	job, ok := wf.Jobs[jobName]
+	if !ok {
+		t.Fatalf("job %q not found in %s", jobName, workflowPath)
+	}
 	// Only pull_request, with exactly these types. pull_request_target or workflow_run would give the
 	// run secrets and a write token while it reads PR-controlled code.
 	wantTypes := "opened,synchronize,ready_for_review,reopened,converted_to_draft,edited,closed"
@@ -879,18 +909,18 @@ func TestReviewerSandbox(t *testing.T) {
 	// env must be reviewed for the sandbox and updated here.
 	present := "steps.token.outputs.present == 'true'"
 	type stepSpec struct {
-		name, ifCond string
-		env          map[string]string
+		name, id, ifCond string
+		env              map[string]string
 	}
 	wantSteps := []stepSpec{
-		{"Check for Claude token", "", map[string]string{"CLAUDE_TOKEN": "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"}},
-		{"Checkout repository", present, nil},
-		{"Collect PR context", present, map[string]string{
+		{"Check for Claude token", "token", "", map[string]string{"CLAUDE_TOKEN": "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"}},
+		{"Checkout repository", "", present, nil},
+		{"Collect PR context", "ctx", present, map[string]string{
 			"GH_TOKEN": "${{ github.token }}", "REPO": "${{ github.repository }}",
 			"PR":       "${{ github.event.pull_request.number }}",
 			"BASE_REF": "${{ github.event.pull_request.base.ref }}",
 			"HEAD_SHA": "${{ github.event.pull_request.head.sha }}"}},
-		{"Run Claude inline review", present + " && steps.ctx.outputs.diff_ok == 'true'", nil},
+		{"Run Claude inline review", "", present + " && steps.ctx.outputs.diff_ok == 'true'", nil},
 	}
 	if len(job.Steps) != len(wantSteps) {
 		t.Fatalf("expected %d steps, got %d", len(wantSteps), len(job.Steps))
@@ -901,6 +931,14 @@ func TestReviewerSandbox(t *testing.T) {
 		if st.Name != want.name {
 			t.Errorf("step %d must be %q, got %q", i, want.name, st.Name)
 			continue
+		}
+		if st.ID != want.id {
+			t.Errorf("step %q: id must be %q (other steps' if: refer to it), got %q", st.Name, want.id, st.ID)
+		}
+		// The setup tests run steps the way GitHub runs a step with no shell: (bash -e), and they
+		// run in the checkout.
+		if st.Shell != "" || st.WorkingDirectory != "" {
+			t.Errorf("step %q: shell and working-directory must be unset, got %q / %q", st.Name, st.Shell, st.WorkingDirectory)
 		}
 		if strings.Join(strings.Fields(st.If), " ") != want.ifCond {
 			t.Errorf("step %q: if: must be %q, got %q", st.Name, want.ifCond, st.If)
