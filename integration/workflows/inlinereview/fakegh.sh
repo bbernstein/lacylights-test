@@ -12,6 +12,7 @@
 #
 # Environment:
 #   FAKE_GH_HEADS  comma-separated head SHAs returned by successive pulls/N calls; the last one repeats.
+#                  An entry of "fail" makes that call fail.
 #   FAKE_GH_FAIL   comma-separated keys that fail: pull, pull_files, comments, compare, compare_diff.
 #                  Like the real gh, a failure prints error JSON to stdout and exits 1.
 # Every call is appended to $FAKE_GH_DIR/calls.log.
@@ -60,6 +61,9 @@ if [ "$key" = pull ]; then
   IFS=, read -r -a heads <<< "${FAKE_GH_HEADS:-}"
   if [ "${#heads[@]}" -gt 0 ]; then
     i=$n; [ "$i" -lt "${#heads[@]}" ] || i=$((${#heads[@]} - 1))
+    if [ "${heads[$i]}" = fail ]; then
+      echo '{"message":"Server Error","status":"500"}'; exit 1
+    fi
     body=$(jq --arg h "${heads[$i]}" '.head.sha = $h' <<< "$body")
   fi
 fi

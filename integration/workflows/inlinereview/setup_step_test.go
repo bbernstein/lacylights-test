@@ -89,6 +89,7 @@ type result struct {
 	prior       string // .git/review/prior-comments.md
 	reviewFiles []string
 	calls       string // the fake gh call log
+	outputs     string // what the step wrote to $GITHUB_OUTPUT
 }
 
 func file(name, status string, extra map[string]any) map[string]any {
@@ -119,7 +120,7 @@ func defaultScenario() scenario {
 				"author_association": "MEMBER", "body": "member comment", "subject_type": "line"},
 			{"id": 6, "path": "c.go", "line": 4, "user": map[string]any{"login": "collab-user"},
 				"author_association": "COLLABORATOR", "body": "collaborator comment", "subject_type": "line"},
-			{"id": 7, "path": "c.go", "line": 6, "user": map[string]any{"login": "copilot-pull-request-reviewer[bot]"},
+			{"id": 7, "path": "c.go", "line": 6, "side": "LEFT", "user": map[string]any{"login": "copilot-pull-request-reviewer[bot]"},
 				"author_association": "NONE", "body": "copilot reviewer comment", "subject_type": "line"},
 			{"id": 8, "path": "a.go", "line": 3, "in_reply_to_id": 1, "user": map[string]any{"login": "owner-user"},
 				"author_association": "OWNER", "body": "owner reply", "subject_type": "line"},
@@ -196,6 +197,7 @@ func runSetup(t *testing.T, sc scenario) result {
 		"GH_TOKEN=fake-token", "REPO="+testRepo, "PR="+testPR,
 		"BASE_REF="+sc.baseRef, "HEAD_SHA="+reviewSHA,
 		"FAKE_GH_DIR="+fixtures,
+		"GITHUB_OUTPUT="+filepath.Join(fixtures, "github_output"),
 		"FAKE_GH_HEADS="+strings.Join(sc.heads, ","),
 		"FAKE_GH_FAIL="+strings.Join(sc.fail, ","),
 	)
@@ -220,8 +222,9 @@ func runSetup(t *testing.T, sc scenario) result {
 		names = append(names, e.Name())
 	}
 	calls, _ := os.ReadFile(filepath.Join(fixtures, "calls.log"))
+	outputs, _ := os.ReadFile(filepath.Join(fixtures, "github_output"))
 	return result{log: string(out), meta: read("pr-meta.md"), diff: read("pr.diff"),
-		prior: read("prior-comments.md"), reviewFiles: names, calls: string(calls)}
+		prior: read("prior-comments.md"), reviewFiles: names, calls: string(calls), outputs: string(outputs)}
 }
 
 func mustContain(t *testing.T, what, got string, wants ...string) {
@@ -277,6 +280,8 @@ func (r result) output(name string) string {
 		return r.prior
 	case "calls":
 		return r.calls
+	case "outputs":
+		return r.outputs
 	}
 	panic("unknown output " + name)
 }
@@ -307,8 +312,9 @@ func TestSetupStep(t *testing.T) {
 						"Reviewing main..." + reviewSHA + " (file list from: pulls)",
 						"- 0000001 commit 1", "- 0000002 commit 2",
 						"- pulls-a.go (modified, +1 -0)", "- pulls-b.go (added, +1 -0)"},
-					"diff":  {"from-compare.go"},
-					"calls": {"repos/" + testRepo + "/compare/main..." + reviewSHA},
+					"diff":    {"from-compare.go"},
+					"calls":   {"repos/" + testRepo + "/compare/main..." + reviewSHA},
+					"outputs": {"diff_ok=true"},
 				},
 				notContains: map[string][]string{
 					"meta": {"compare-only.go", "NOTE:"},
@@ -321,13 +327,13 @@ func TestSetupStep(t *testing.T) {
 			name: "prior comments from trusted authors only",
 			want: check{
 				contains: map[string][]string{"prior": {
-					"## comment 1 by owner-user on a.go:3\n",
-					"## comment 2 by claude[bot] on a.go:9 [outdated]",
-					"## comment 3 by Copilot on b.go:? [file-level]",
-					"## comment 5 by member-user on c.go:2\n",
-					"## comment 6 by collab-user on c.go:4\n",
-					"## comment 7 by copilot-pull-request-reviewer[bot] on c.go:6\n",
-					"## comment 8 by owner-user on a.go:3 (reply to 1)\n",
+					"## comment 1 by owner-user on a.go:3 (RIGHT)\n",
+					"## comment 2 by claude[bot] on a.go:9 (RIGHT) [outdated]",
+					"## comment 3 by Copilot on b.go:? (RIGHT) [file-level]",
+					"## comment 5 by member-user on c.go:2 (RIGHT)\n",
+					"## comment 6 by collab-user on c.go:4 (RIGHT)\n",
+					"## comment 7 by copilot-pull-request-reviewer[bot] on c.go:6 (LEFT)\n",
+					"## comment 8 by owner-user on a.go:3 (RIGHT) (reply to 1)\n",
 					"owner line comment", "owner reply"}},
 				notContains: map[string][]string{"prior": {"copilot-fan", "drive-by", "contributor"}},
 			},
@@ -363,6 +369,18 @@ func TestSetupStep(t *testing.T) {
 					"meta": {"(could not fetch title and description)", "(file list from: compare)"},
 				},
 				notContains: map[string][]string{"log": {"is newer than the reviewed commit"}},
+			},
+		},
+		{
+			// The second head lookup (after fetching files) fails: report that, not a moved head.
+			name:   "second head lookup fails",
+			modify: func(sc *scenario) { sc.heads = []string{reviewSHA, "fail", reviewSHA} },
+			want: check{
+				contains: map[string][]string{
+					"log":  {"::warning::Could not re-read the PR head after fetching files"},
+					"meta": {"(file list from: compare)"},
+				},
+				notContains: map[string][]string{"log": {"changed while fetching files"}},
 			},
 		},
 		{
@@ -406,10 +424,12 @@ func TestSetupStep(t *testing.T) {
 			want: check{
 				contains: map[string][]string{
 					"log": {"::warning::Could not fetch the changed-file list.",
-						"::warning::Could not build the PR diff", "::warning::Could not fetch the commit list"},
-					"meta": {"(could not fetch the file list)", "(could not fetch the commit list)"},
+						"::warning::Could not build the PR diff", "::warning::Could not fetch the commit list",
+						"::warning::No diff is available for this PR; skipping the inline review."},
+					"meta":    {"(could not fetch the file list)", "(could not fetch the commit list)"},
+					"outputs": {"diff_ok=false"},
 				},
-				notContains: map[string][]string{"meta": {"NOTE:"}},
+				notContains: map[string][]string{"meta": {"NOTE:"}, "outputs": {"diff_ok=true"}},
 				emptyDiff:   true,
 			},
 		},
