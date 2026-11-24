@@ -726,7 +726,7 @@ func TestSetupStep(t *testing.T) {
 			// A failed total_commits/commits call must not suppress the file-cap note.
 			name: "file cap note survives failed commit calls",
 			modify: func(sc *scenario) {
-				sc.fail = []string{"compare"} // commits and total_commits fail; pulls/N/files works
+				sc.fail = []string{"compare", "compare_total"} // commits and total_commits fail; pulls/N/files works
 				sc.pullFiles = filesN(3000)
 			},
 			want: check{
@@ -747,12 +747,12 @@ func TestSetupStep(t *testing.T) {
 			}},
 		},
 		{
-			// compare JSON (commits, total_commits) fails while the diff still works.
-			name:   "compare JSON fails",
-			modify: func(sc *scenario) { sc.fail = []string{"compare"} },
+			// Only the total_commits call fails: gh prints error JSON, which the numeric check must drop,
+			// so there is no truncation NOTE and no shell integer error (assertClean).
+			name:   "total_commits call fails alone",
+			modify: func(sc *scenario) { sc.fail = []string{"compare_total"}; sc.commits, sc.totalCommit = 2, 5 },
 			want: check{
-				contains:    map[string][]string{"log": {"::warning::Could not fetch the commit list"}},
-				notContains: map[string][]string{"meta": {"NOTE:"}},
+				notContains: map[string][]string{"meta": {"NOTE:"}, "log": {"::warning::Could not fetch the commit list"}},
 			},
 		},
 	}
