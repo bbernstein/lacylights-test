@@ -134,7 +134,11 @@ func runSetup(t *testing.T, sc scenario) result {
 	t.Helper()
 	for _, tool := range []string{"bash", "jq"} {
 		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("%s is required: %v", tool, err)
+			// GitHub runners have both, so a missing tool in CI is a real failure, not a skip.
+			if os.Getenv("CI") != "" {
+				t.Fatalf("%s is required: %v", tool, err)
+			}
+			t.Skipf("%s is required (install it to run these tests): %v", tool, err)
 		}
 	}
 	work := t.TempDir()     // stands in for the checkout; the step writes into ./.git/review
@@ -243,230 +247,358 @@ func assertClean(t *testing.T, r result) {
 	}
 }
 
-// Normal case: the PR head is the reviewed commit, so the file list comes from pulls/N/files
-// (3000-file cap) and the diff from compare against the base branch.
-func TestSetupNormal(t *testing.T) {
-	r := runSetup(t, defaultScenario())
-	assertClean(t, r)
-	mustContain(t, "pr-meta.md", r.meta,
-		"# Example PR", "Example description",
-		"Reviewing main..."+reviewSHA+" (file list from: pulls)",
-		"- 0000001 commit 1", "- 0000002 commit 2",
-		"- pulls-a.go (modified, +1 -0)", "- pulls-b.go (added, +1 -0)")
-	mustNotContain(t, "pr-meta.md", r.meta, "compare-only.go", "NOTE:")
-	mustContain(t, "pr.diff", r.diff, "from-compare.go")
-	mustNotContain(t, "log", r.log, "::warning::", "::notice::")
-	mustContain(t, "gh calls", r.calls, "repos/"+testRepo+"/compare/main..."+reviewSHA)
+// check is one expectation about a setup-step run.
+type check struct {
+	contains    map[string][]string // output name ("log", "meta", "diff", "prior") -> substrings it must contain
+	notContains map[string][]string // output name -> substrings it must not contain
+	emptyDiff   bool
+	emptyPrior  bool
 }
 
-// Earlier comments: only trusted authors are kept, and labels distinguish outdated and file-level ones.
-func TestSetupPriorCommentsTrustedOnly(t *testing.T) {
-	r := runSetup(t, defaultScenario())
-	mustContain(t, "prior-comments.md", r.prior,
-		"## comment 1 by owner-user on a.go:3\n",
-		"## comment 2 by claude[bot] on a.go:9 [outdated]",
-		"## comment 3 by Copilot on b.go:? [file-level]",
-		"owner line comment")
-	mustNotContain(t, "prior-comments.md", r.prior, "copilot-fan", "drive-by")
-}
-
-// A newer commit was pushed before the run started: the file list must come from compare.
-func TestSetupHeadAlreadyMoved(t *testing.T) {
-	sc := defaultScenario()
-	sc.heads = []string{newerSHA}
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log, "::notice::The PR head ("+newerSHA+") is newer than the reviewed commit")
-	mustContain(t, "pr-meta.md", r.meta, "(file list from: compare)", "- compare-only.go")
-	mustNotContain(t, "pr-meta.md", r.meta, "pulls-a.go")
-}
-
-// The head moves while pulls/N/files is being fetched: that list may mix commits, so use compare.
-func TestSetupHeadMovesDuringFetch(t *testing.T) {
-	sc := defaultScenario()
-	sc.heads = []string{reviewSHA, newerSHA}
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log, "::notice::The PR head changed while fetching files")
-	mustContain(t, "pr-meta.md", r.meta, "(file list from: compare)", "- compare-only.go")
-}
-
-// pulls/N fails: gh prints error JSON to stdout, which must not be mistaken for a moved head or
-// leak into pr-meta.md.
-func TestSetupHeadLookupFails(t *testing.T) {
-	sc := defaultScenario()
-	sc.fail = []string{"pull"}
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log,
-		"::warning::Could not read the PR head",
-		"::warning::Could not fetch title and description")
-	mustNotContain(t, "log", r.log, "is newer than the reviewed commit")
-	mustContain(t, "pr-meta.md", r.meta, "(could not fetch title and description)", "(file list from: compare)")
-}
-
-// pulls/N/files fails: fall back to compare for the file list.
-func TestSetupPullFilesFails(t *testing.T) {
-	sc := defaultScenario()
-	sc.fail = []string{"pull_files"}
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log, "::warning::Could not fetch pulls/"+testPR+"/files")
-	mustContain(t, "pr-meta.md", r.meta, "(file list from: compare)", "- compare-only.go")
-}
-
-// GitHub refuses the full diff: it is rebuilt from per-file patches, including renames, deletions and
-// files with no patch.
-func TestSetupDiffFallback(t *testing.T) {
-	sc := defaultScenario()
-	sc.fail = []string{"compare_diff"}
-	sc.pullFiles = []map[string]any{
-		file("kept.go", "modified", nil),
-		file("new-name.go", "renamed", map[string]any{"previous_filename": "old-name.go", "patch": nil}),
-		file("gone.go", "removed", map[string]any{"patch": nil}),
-		file("image.png", "modified", map[string]any{"patch": nil}),
+func (r result) output(name string) string {
+	switch name {
+	case "log":
+		return r.log
+	case "meta":
+		return r.meta
+	case "diff":
+		return r.diff
+	case "prior":
+		return r.prior
+	case "calls":
+		return r.calls
 	}
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log, "::notice::compare diff failed")
-	mustContain(t, "pr.diff", r.diff,
-		"diff --git a/kept.go b/kept.go", "+kept.go",
-		"diff --git a/old-name.go b/new-name.go", "(renamed from old-name.go)", "# (renamed without content changes)",
-		"# (file deleted; it is not in the checkout)",
-		"# (no patch: binary or too large; Read the file directly)")
-	mustNotContain(t, "pr.diff", r.diff, "from-compare.go")
-	mustContain(t, "pr-meta.md", r.meta, "- new-name.go (renamed, +1 -0) renamed from old-name.go")
+	panic("unknown output " + name)
 }
 
-// Diff and file list both unavailable: warn, but still produce the other files.
-func TestSetupNoDiffAtAll(t *testing.T) {
-	sc := defaultScenario()
-	sc.fail = []string{"compare_diff", "pull_files", "compare"}
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log,
-		"::warning::Could not fetch the changed-file list.",
-		"::warning::Could not build the PR diff",
-		"::warning::Could not fetch the commit list")
-	mustContain(t, "pr-meta.md", r.meta, "(could not fetch the file list)", "(could not fetch the commit list)")
-	// A failed fetch must not be misreported as GitHub truncating the lists.
-	mustNotContain(t, "pr-meta.md", r.meta, "NOTE:")
-	if r.diff != "" {
-		t.Errorf("pr.diff should be empty, got:\n%s", r.diff)
+func filesN(n int) []map[string]any {
+	fs := make([]map[string]any, n)
+	for i := range fs {
+		fs[i] = file(fmt.Sprintf("f%03d.go", i), "added", nil)
+	}
+	return fs
+}
+
+// TestSetupStep runs the workflow's setup step once per case. Every case also runs assertClean: no gh
+// error JSON in the reviewer's files, no leftover temp files, and no shell errors.
+func TestSetupStep(t *testing.T) {
+	cases := []struct {
+		name   string
+		modify func(*scenario)
+		want   check
+	}{
+		{
+			// The PR head is the reviewed commit, so the file list comes from pulls/N/files (3000 cap)
+			// and the diff from compare against the base branch.
+			name: "normal path",
+			want: check{
+				contains: map[string][]string{
+					"meta": {"# Example PR", "Example description",
+						"Reviewing main..." + reviewSHA + " (file list from: pulls)",
+						"- 0000001 commit 1", "- 0000002 commit 2",
+						"- pulls-a.go (modified, +1 -0)", "- pulls-b.go (added, +1 -0)"},
+					"diff":  {"from-compare.go"},
+					"calls": {"repos/" + testRepo + "/compare/main..." + reviewSHA},
+				},
+				notContains: map[string][]string{
+					"meta": {"compare-only.go", "NOTE:"},
+					"log":  {"::warning::", "::notice::"},
+				},
+			},
+		},
+		{
+			// Earlier comments: only trusted authors are kept, with outdated and file-level labels.
+			name: "prior comments from trusted authors only",
+			want: check{
+				contains: map[string][]string{"prior": {
+					"## comment 1 by owner-user on a.go:3\n",
+					"## comment 2 by claude[bot] on a.go:9 [outdated]",
+					"## comment 3 by Copilot on b.go:? [file-level]",
+					"owner line comment"}},
+				notContains: map[string][]string{"prior": {"copilot-fan", "drive-by"}},
+			},
+		},
+		{
+			// A newer commit was pushed before the run started: the file list must come from compare.
+			name:   "head already moved",
+			modify: func(sc *scenario) { sc.heads = []string{newerSHA} },
+			want: check{
+				contains: map[string][]string{
+					"log":  {"::notice::The PR head (" + newerSHA + ") is newer than the reviewed commit"},
+					"meta": {"(file list from: compare)", "- compare-only.go"},
+				},
+				notContains: map[string][]string{"meta": {"pulls-a.go"}},
+			},
+		},
+		{
+			// The head moves while pulls/N/files is being fetched: that list may mix commits.
+			name:   "head moves during files fetch",
+			modify: func(sc *scenario) { sc.heads = []string{reviewSHA, newerSHA} },
+			want: check{contains: map[string][]string{
+				"log":  {"::notice::The PR head changed while fetching files"},
+				"meta": {"(file list from: compare)", "- compare-only.go"},
+			}},
+		},
+		{
+			// gh prints error JSON to stdout on failure; that must not look like a moved head.
+			name:   "head lookup fails",
+			modify: func(sc *scenario) { sc.fail = []string{"pull"} },
+			want: check{
+				contains: map[string][]string{
+					"log":  {"::warning::Could not read the PR head", "::warning::Could not fetch title and description"},
+					"meta": {"(could not fetch title and description)", "(file list from: compare)"},
+				},
+				notContains: map[string][]string{"log": {"is newer than the reviewed commit"}},
+			},
+		},
+		{
+			name:   "pulls files fetch fails",
+			modify: func(sc *scenario) { sc.fail = []string{"pull_files"} },
+			want: check{contains: map[string][]string{
+				"log":  {"::warning::Could not fetch pulls/" + testPR + "/files"},
+				"meta": {"(file list from: compare)", "- compare-only.go"},
+			}},
+		},
+		{
+			// GitHub refuses the full diff: rebuild it from per-file patches.
+			name: "diff rebuilt from per-file patches",
+			modify: func(sc *scenario) {
+				sc.fail = []string{"compare_diff"}
+				sc.pullFiles = []map[string]any{
+					file("kept.go", "modified", nil),
+					file("new-name.go", "renamed", map[string]any{"previous_filename": "old-name.go", "patch": nil}),
+					file("gone.go", "removed", map[string]any{"patch": nil}),
+					file("image.png", "modified", map[string]any{"patch": nil}),
+				}
+			},
+			want: check{
+				contains: map[string][]string{
+					"log": {"::notice::compare diff failed"},
+					"diff": {"diff --git a/kept.go b/kept.go", "+kept.go",
+						"diff --git a/old-name.go b/new-name.go", "(renamed from old-name.go)",
+						"# (renamed without content changes)",
+						"# (file deleted; it is not in the checkout)",
+						"# (no patch: binary or too large; Read the file directly)"},
+					"meta": {"- new-name.go (renamed, +1 -0) renamed from old-name.go"},
+				},
+				notContains: map[string][]string{"diff": {"from-compare.go"}},
+			},
+		},
+		{
+			// Neither the diff nor any file list is available. A failed fetch must not be
+			// misreported as GitHub truncating the lists.
+			name:   "no diff and no file list",
+			modify: func(sc *scenario) { sc.fail = []string{"compare_diff", "pull_files", "compare"} },
+			want: check{
+				contains: map[string][]string{
+					"log": {"::warning::Could not fetch the changed-file list.",
+						"::warning::Could not build the PR diff", "::warning::Could not fetch the commit list"},
+					"meta": {"(could not fetch the file list)", "(could not fetch the commit list)"},
+				},
+				notContains: map[string][]string{"meta": {"NOTE:"}},
+				emptyDiff:   true,
+			},
+		},
+		{
+			name:   "comments fetch fails",
+			modify: func(sc *scenario) { sc.fail = []string{"comments"} },
+			want: check{
+				contains:   map[string][]string{"log": {"::warning::Could not fetch earlier inline comments"}},
+				emptyPrior: true,
+			},
+		},
+		{
+			// Only the commit list is short; the file list must not be called truncated.
+			name:   "commit list shorter than total_commits",
+			modify: func(sc *scenario) { sc.commits, sc.totalCommit = 2, 5 },
+			want: check{
+				contains: map[string][]string{
+					"log":  {"::warning::GitHub returned only 2 of 5 commits; the commit list is incomplete."},
+					"meta": {"NOTE: GitHub returned only 2 of 5 commits; the commit list above is incomplete."},
+				},
+				notContains: map[string][]string{"meta": {"file list (and"}},
+			},
+		},
+		{
+			// The compare API returns at most 300 files; reaching that cap triggers the NOTE.
+			name: "compare file cap reached",
+			modify: func(sc *scenario) {
+				sc.heads = []string{newerSHA} // forces the compare source
+				sc.compareFile = filesN(300)
+			},
+			want: check{
+				contains: map[string][]string{
+					"log":  {"::warning::GitHub returned 300 changed files, the most it returns here"},
+					"meta": {"NOTE: GitHub returned 300 changed files, the most it returns here", "may be truncated"},
+				},
+				notContains: map[string][]string{"meta": {"commit list above is incomplete"}},
+			},
+		},
+		{
+			// Just under the cap: no NOTE.
+			name: "compare file list below cap",
+			modify: func(sc *scenario) {
+				sc.heads = []string{newerSHA}
+				sc.compareFile = filesN(299)
+			},
+			want: check{notContains: map[string][]string{"meta": {"NOTE:"}}},
+		},
+		{
+			// compare JSON (commits, total_commits) fails while the diff still works.
+			name:   "compare JSON fails",
+			modify: func(sc *scenario) { sc.fail = []string{"compare"} },
+			want: check{
+				contains:    map[string][]string{"log": {"::warning::Could not fetch the commit list"}},
+				notContains: map[string][]string{"meta": {"NOTE:"}},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sc := defaultScenario()
+			if tc.modify != nil {
+				tc.modify(&sc)
+			}
+			r := runSetup(t, sc)
+			assertClean(t, r)
+			for name, wants := range tc.want.contains {
+				mustContain(t, name, r.output(name), wants...)
+			}
+			for name, unwanted := range tc.want.notContains {
+				mustNotContain(t, name, r.output(name), unwanted...)
+			}
+			if tc.want.emptyDiff && r.diff != "" {
+				t.Errorf("pr.diff should be empty, got:\n%s", r.diff)
+			}
+			if tc.want.emptyPrior && r.prior != "" {
+				t.Errorf("prior-comments.md should be empty, got:\n%s", r.prior)
+			}
+		})
 	}
 }
 
-// Comments fetch fails: warn and leave an empty file rather than error JSON.
-func TestSetupCommentsFail(t *testing.T) {
-	sc := defaultScenario()
-	sc.fail = []string{"comments"}
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log, "::warning::Could not fetch earlier inline comments")
-	if r.prior != "" {
-		t.Errorf("prior-comments.md should be empty, got:\n%s", r.prior)
+// topLevelAnd splits a GitHub Actions expression on && operators that are not inside parentheses or
+// quotes.
+func topLevelAnd(expr string) []string {
+	var parts []string
+	depth, start := 0, 0
+	inQuote := false
+	for i := 0; i < len(expr); i++ {
+		switch c := expr[i]; {
+		case c == '\'':
+			inQuote = !inQuote
+		case inQuote:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case c == '&' && depth == 0 && i+1 < len(expr) && expr[i+1] == '&':
+			parts = append(parts, strings.TrimSpace(expr[start:i]))
+			start = i + 2
+			i++
+		}
 	}
+	return append(parts, strings.TrimSpace(expr[start:]))
 }
 
-// Fewer commits than total_commits: the reviewer is told the lists may be incomplete.
-func TestSetupCommitListShort(t *testing.T) {
-	sc := defaultScenario()
-	sc.commits, sc.totalCommit = 2, 5
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log, "::warning::GitHub returned only 2 of 5 commits; the commit list is incomplete.")
-	mustContain(t, "pr-meta.md", r.meta, "NOTE: GitHub returned only 2 of 5 commits; the commit list above is incomplete.")
-	// Only the commit list is short; the file list must not be called truncated.
-	mustNotContain(t, "pr-meta.md", r.meta, "file list (and")
+// unwrapExpr strips the ${{ }} wrapper from a workflow expression and normalizes whitespace.
+func unwrapExpr(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	s = strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(s, "${{"), "}}"))
+	return s
 }
 
-// The compare API returns at most 300 files: reaching that cap triggers the NOTE.
-func TestSetupCompareFileCap(t *testing.T) {
-	sc := defaultScenario()
-	sc.heads = []string{newerSHA} // force the compare source
-	sc.compareFile = make([]map[string]any, 300)
-	for i := range sc.compareFile {
-		sc.compareFile[i] = file(fmt.Sprintf("f%03d.go", i), "added", nil)
-	}
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log, "::warning::GitHub returned 300 changed files, the most it returns here")
-	mustContain(t, "pr-meta.md", r.meta, "NOTE: GitHub returned 300 changed files, the most it returns here", "may be truncated")
-	mustNotContain(t, "pr-meta.md", r.meta, "commit list above is incomplete")
-}
-
-// The compare JSON (commits, total_commits) fails: the commit list is reported missing, and the
-// truncation check is skipped instead of failing on a non-numeric total.
-func TestSetupCompareJSONFails(t *testing.T) {
-	sc := defaultScenario()
-	sc.fail = []string{"compare"} // compare JSON fails; the diff (compare_diff) still works
-	r := runSetup(t, sc)
-	assertClean(t, r)
-	mustContain(t, "log", r.log, "::warning::Could not fetch the commit list")
-	mustNotContain(t, "pr-meta.md", r.meta, "NOTE:")
-}
-
-// The job's skip conditions are repeated in the concurrency group key (skipped runs get their own
-// group so they can't cancel a real review). Each clause in the job's `if:` must also appear there.
+// The job's skip conditions are repeated in the concurrency group key: runs the job will skip get a
+// group of their own, so they can't cancel a real review. Every top-level clause of the job's if:,
+// except the documented `closed` exception (closed joins the review group to cancel, and the job
+// then skips it), must also appear in the group.
 func TestSkipConditionsInSync(t *testing.T) {
 	wf := loadWorkflow(t)
-	norm := func(s string) string { return strings.Join(strings.Fields(s), " ") }
-	jobIf := norm(wf.Jobs[jobName].If)
-	group := norm(wf.Concurrency.Group)
-	clauses := []string{
-		"!github.event.pull_request.draft",
-		"(github.event.action != 'edited' || github.event.changes.base)",
-		"(github.actor == 'dependabot[bot]' || github.actor == 'claude[bot]' || (!endsWith(github.actor, '[bot]') && github.actor != 'Copilot'))",
+	jobIf := unwrapExpr(wf.Jobs[jobName].If)
+	group := strings.Join(strings.Fields(wf.Concurrency.Group), " ")
+	const closedSkip = "github.event.action != 'closed'"
+
+	clauses := topLevelAnd(jobIf)
+	if len(clauses) < 2 {
+		t.Fatalf("expected several && clauses in the job if:, got %q", jobIf)
 	}
+	sawClosed := false
 	for _, c := range clauses {
-		if !strings.Contains(jobIf, c) {
-			t.Errorf("job if: is missing clause %q\n(if: %s)\n(update this test if the condition changed on purpose)", c, jobIf)
+		if c == closedSkip {
+			sawClosed = true
+			continue
 		}
 		if !strings.Contains(group, c) {
-			t.Errorf("concurrency group is missing clause %q that the job if: has; keep them in sync\n(group: %s)", c, group)
+			t.Errorf("concurrency group is missing the job if: clause %q; keep them in sync\n(group: %s)", c, group)
 		}
 	}
-	// Events that must cancel a running review join the review group, and the job skips them.
+	if !sawClosed {
+		t.Errorf("job if: should skip closed events with %q", closedSkip)
+	}
+	// Events that must cancel a running review join the review group (and the job skips them).
 	for _, ev := range []string{"converted_to_draft", "closed"} {
 		if !strings.Contains(group, "github.event.action == '"+ev+"'") {
 			t.Errorf("concurrency group should route %s into the review group", ev)
 		}
 	}
-	if !strings.Contains(jobIf, "github.event.action != 'closed'") {
-		t.Errorf("job if: should skip closed events")
+}
+
+func TestTopLevelAnd(t *testing.T) {
+	cases := []struct {
+		in   string
+		want []string
+	}{
+		{"a && b", []string{"a", "b"}},
+		{"a && (b && c) && d", []string{"a", "(b && c)", "d"}},
+		{"x == 'p && q' && y", []string{"x == 'p && q'", "y"}},
+		{"single", []string{"single"}},
+	}
+	for _, tc := range cases {
+		got := topLevelAnd(tc.in)
+		if strings.Join(got, "|") != strings.Join(tc.want, "|") {
+			t.Errorf("topLevelAnd(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
 
 // Every LacyLights repo carries an identical copy of the workflow. When sibling repos are checked out
-// next to this one (the usual local layout), compare their origin/main copies with this one. Skipped
-// in CI, where the siblings aren't present.
+// next to this one (the usual local layout), compare each sibling's origin/main copy with
+// lacylights-test's origin/main copy, so a branch that is mid-change doesn't fail locally. Skipped in
+// CI, where the siblings aren't present.
 func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
-	ours, err := os.ReadFile(workflowPath)
+	const wfFile = ".github/workflows/claude-inline-review.yml"
+	show := func(dir string) ([]byte, error) {
+		out, err := exec.Command("git", "-C", dir, "show", "origin/main:"+wfFile).Output()
+		if ee, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("%v: %s", err, strings.TrimSpace(string(ee.Stderr)))
+		}
+		return out, err
+	}
+	ours, err := show(".")
 	if err != nil {
-		t.Fatal(err)
+		t.Skipf("lacylights-test has no %s on origin/main yet: %v", wfFile, err)
 	}
 	root, err := filepath.Abs("../../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	siblings := []string{"lacylights-go", "lacylights-fe", "lacylights-mcp", "lacylights-rpi",
-		"lacylights-terraform", "lacylights-mac"}
 	checked := 0
-	for _, repo := range siblings {
+	for _, repo := range []string{"lacylights-go", "lacylights-fe", "lacylights-mcp", "lacylights-rpi",
+		"lacylights-terraform", "lacylights-mac"} {
 		dir := filepath.Join(root, repo)
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 			continue
 		}
-		theirs, err := exec.Command("git", "-C", dir, "show",
-			"origin/main:.github/workflows/claude-inline-review.yml").Output()
+		theirs, err := show(dir)
 		if err != nil {
-			t.Logf("%s: no claude-inline-review.yml on origin/main yet; skipping", repo)
+			t.Logf("%s: skipping, can't read origin/main:%s: %v", repo, wfFile, err)
 			continue
 		}
 		checked++
 		if string(theirs) != string(ours) {
-			t.Errorf("%s: origin/main copy of claude-inline-review.yml differs from lacylights-test's; "+
-				"the workflow must be identical in every repo", repo)
+			t.Errorf("%s: origin/main copy of %s differs from lacylights-test's origin/main copy; "+
+				"the workflow must be identical in every repo", repo, wfFile)
 		}
 	}
 	if checked == 0 {
