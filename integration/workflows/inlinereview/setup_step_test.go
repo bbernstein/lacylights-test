@@ -293,7 +293,10 @@ func assertClean(t *testing.T, r result) {
 	for name, body := range map[string]string{"pr-meta.md": r.meta, "pr.diff": r.diff, "prior-comments.md": r.prior} {
 		mustNotContain(t, name, body, `"message"`, `"status"`)
 	}
-	mustNotContain(t, "log", r.log, "integer expression expected", "command not found", "jq: error", "syntax error")
+	// Shell and tool errors the step can survive under bash -e (inside $(...), after ||, or in
+	// arithmetic), plus the fake gh's own refusals.
+	mustNotContain(t, "log", r.log, "integer expression expected", "command not found", "jq: error", "syntax error",
+		"No such file or directory", "bad substitution", "ambiguous redirect", "fake gh:")
 	want := map[string]bool{"pr-meta.md": true, "pr.diff": true, "prior-comments.md": true}
 	for _, n := range r.reviewFiles {
 		if !want[n] {
@@ -710,6 +713,11 @@ func TestSkipConditionsInSync(t *testing.T) {
 	if i < 0 {
 		t.Fatalf("concurrency group has no ${{ }} expression: %q", group)
 	}
+	// The key must start with the PR number, so different PRs never share a group (and cancel each
+	// other's reviews).
+	if prefix := "claude-inline-review-${{ github.event.pull_request.number }}-"; group[:i] != prefix {
+		t.Errorf("concurrency group must start with %q, got %q", prefix, group[:i])
+	}
 	expr := unwrapExpr(group[i:])
 	const suffix = "&& 'review' || github.run_id"
 	if !strings.HasSuffix(expr, suffix) {
@@ -1002,6 +1010,11 @@ fi
 			if st.Env[k] != v {
 				t.Errorf("step %q: env %s must be %q, got %q", st.Name, k, v, st.Env[k])
 			}
+		}
+		// No ${{ }} in a run: script. GitHub pastes expression values into the script before bash runs
+		// (script injection, for example from a PR title); values must reach the shell only through env:.
+		if strings.Contains(st.Run, "${{") {
+			t.Errorf("step %q: run: must not contain ${{ }} expressions; pass values through env:", st.Name)
 		}
 		// Writing to $GITHUB_ENV or $GITHUB_PATH would change the environment of later steps, including
 		// the Claude step (for example ANTHROPIC_BASE_URL).
