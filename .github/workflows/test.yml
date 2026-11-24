@@ -66,7 +66,10 @@ jobs:
       # fail. continue-on-error keeps a failure here from skipping the contract tests; make test-ci runs
       # both suites again and fails the job if either fails, so neither can hide the other.
       # Real `gh api --jq` evaluates filters with gojq; the fake gh uses gojq when it's on PATH.
+      # continue-on-error: an install failure (for example a module-proxy hiccup) must not skip the contract
+      # tests. The workflow tests require gojq in CI, so they still fail, and make test-ci fails the job.
       - name: Install gojq
+        continue-on-error: true
         run: |
           go install github.com/itchyny/gojq/cmd/gojq@v0.12.19
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
