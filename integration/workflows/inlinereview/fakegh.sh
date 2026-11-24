@@ -31,10 +31,11 @@ endpoint="" filter="" accept=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --paginate) shift ;;
-    --jq) filter=$2; shift 2 ;;
-    -H) [ -z "$accept" ] || refuse "more than one -H header: $accept / $2"; accept=$2; shift 2 ;;
+    --jq) [ $# -ge 2 ] || refuse "--jq without a filter"; filter=$2; shift 2 ;;
+    -H) [ $# -ge 2 ] || refuse "-H without a header"
+        [ -z "$accept" ] || refuse "more than one -H header: $accept / $2"; accept=$2; shift 2 ;;
     -*) refuse "unsupported flag $1" ;;
-    *) endpoint=$1; shift ;;
+    *) [ -z "$endpoint" ] || refuse "more than one endpoint: $endpoint / $1"; endpoint=$1; shift ;;
   esac
 done
 
@@ -42,11 +43,13 @@ done
 # 404, so a workflow change that calls a new endpoint fails the tests instead of getting wrong data.
 # A query string (such as ?per_page=100) is allowed and ignored. Only the compare endpoint accepts a
 # header, and only the diff Accept header.
+# Anchored to the step's own $REPO and $PR, so a call about another repo or PR is refused.
 seg='[^/?]+' q='(\?[^/]*)?'
-if [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+/files$q$ ]]; then key=pull_files
-elif [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+/comments$q$ ]]; then key=comments
-elif [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+$q$ ]]; then key=pull
-elif [[ "$endpoint" =~ ^repos/$seg/$seg/compare/$seg$q$ ]]; then
+pr_path="repos/${REPO:?}/pulls/${PR:?}"
+if [[ "$endpoint" =~ ^$pr_path/files$q$ ]]; then key=pull_files
+elif [[ "$endpoint" =~ ^$pr_path/comments$q$ ]]; then key=comments
+elif [[ "$endpoint" =~ ^$pr_path$q$ ]]; then key=pull
+elif [[ "$endpoint" =~ ^repos/$REPO/compare/$seg$q$ ]]; then
   case "$accept" in
     "") key=compare ;;
     "Accept: application/vnd.github.diff") key=compare_diff ;;
