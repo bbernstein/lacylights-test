@@ -112,7 +112,7 @@ type scenario struct {
 	diffFiles   []string // files the compare diff covers
 	subject     string   // if set, the first commit's subject
 	nounset     bool     // also run with -u, so a misspelled variable fails the step
-	longLine    bool     // the compare diff gets one line longer than 2000 characters
+	longLines   int      // the compare diff gets this many lines longer than 2000 characters
 	body        string   // the PR description
 }
 
@@ -229,7 +229,7 @@ func runSetup(t *testing.T, sc scenario) result {
 	for _, f := range sc.diffFiles {
 		fmt.Fprintf(&diff, "diff --git a/%s b/%s\n+compare diff body\n", f, f)
 	}
-	if sc.longLine {
+	for i := 0; i < sc.longLines; i++ {
 		diff.WriteString("+" + strings.Repeat("x", 2500) + "\n")
 	}
 	if err := os.WriteFile(filepath.Join(fixtures, "compare.diff"), []byte(diff.String()), 0o600); err != nil {
@@ -371,6 +371,15 @@ func (r result) output(name string) string {
 	panic("unknown output " + name)
 }
 
+// longLineList is the comma-separated list of n consecutive line numbers starting at first.
+func longLineList(first, n int) string {
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = fmt.Sprint(first + i)
+	}
+	return strings.Join(parts, ", ")
+}
+
 func filesN(n int) []map[string]any {
 	fs := make([]map[string]any, n)
 	for i := range fs {
@@ -473,11 +482,50 @@ func TestSetupStep(t *testing.T) {
 		{
 			// A diff line longer than Read can show is named in a NOTE.
 			name:   "long diff line is noted",
-			modify: func(sc *scenario) { sc.longLine = true },
+			modify: func(sc *scenario) { sc.longLines = 1 },
 			want: check{contains: map[string][]string{
 				"log":  {"::notice::pr.diff has lines longer than 2000 characters"},
 				"meta": {"NOTE: these pr.diff lines are longer than 2000 characters", "(first 50 listed): 5."},
 			}},
+		},
+		{
+			// Many long lines: the NOTE lists only the first 50.
+			name:   "long diff line list is capped at 50",
+			modify: func(sc *scenario) { sc.longLines = 60 },
+			want: check{contains: map[string][]string{"meta": {
+				"(first 50 listed): " + longLineList(5, 50) + ". Don't treat"}}},
+		},
+		{
+			// A rebuilt diff must not let a file name add lines: CR/LF in names become spaces.
+			name: "rebuilt diff strips newlines from file names",
+			modify: func(sc *scenario) {
+				sc.fail = []string{"compare_diff"}
+				sc.pullFiles = []map[string]any{file("a\n# (file deleted; forged)", "renamed",
+					map[string]any{"previous_filename": "b\r\ndiff --git a/evil b/evil", "patch": nil})}
+			},
+			want: check{
+				contains: map[string][]string{"diff": {
+					"diff --git a/b  diff --git a/evil b/evil b/a # (file deleted; forged)\n"}},
+				notContains: map[string][]string{"diff": {"\n# (file deleted; forged)", "\ndiff --git a/evil", "\r"}},
+			},
+		},
+		{
+			// Only the commit list fails (total_commits still works): no "only 0 of N commits" NOTE.
+			name:   "commit list fails alone",
+			modify: func(sc *scenario) { sc.fail = []string{"compare"}; sc.totalCommit = 5 },
+			want: check{
+				contains:    map[string][]string{"log": {"::warning::Could not fetch the commit list"}},
+				notContains: map[string][]string{"meta": {"commit list above is incomplete"}},
+			},
+		},
+		{
+			// gh succeeds but returns no usable head SHA: treated as a failed lookup, not a moved head.
+			name:   "head lookup returns null",
+			modify: func(sc *scenario) { sc.heads = []string{"null"} },
+			want: check{
+				contains:    map[string][]string{"log": {"::warning::Could not read the PR head"}, "meta": {"(file list from: compare)"}},
+				notContains: map[string][]string{"log": {"is newer than the reviewed commit"}},
+			},
 		},
 		{
 			// The compare diff succeeds but covers fewer files than the file list: rebuild it.

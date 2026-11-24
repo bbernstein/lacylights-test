@@ -12,8 +12,9 @@
 #
 # Environment:
 #   FAKE_GH_HEADS  comma-separated head SHAs returned by successive pulls/N calls; the last one repeats.
-#                  An entry of "fail" makes that call fail.
-#   FAKE_GH_FAIL   comma-separated keys that fail: pull, pull_files, comments, compare, compare_diff.
+#                  An entry of "fail" makes that call fail; "null" returns a null head.sha (exit 0).
+#   FAKE_GH_FAIL   comma-separated keys that fail: pull, pull_files, comments, compare, compare_total
+#                  (the ?per_page=1 total_commits call), compare_diff.
 #                  Like the real gh, a failure prints error JSON to stdout and exits 1.
 # Every call is appended to $FAKE_GH_DIR/calls.log. Every unknown endpoint or unsupported flag or header is
 # also appended to $FAKE_GH_DIR/refused.log, which the tests require to be empty: the step guards its gh
@@ -54,7 +55,7 @@ elif [[ "$endpoint" =~ ^"$pr_path"/comments$q$ ]]; then key=comments
 elif [[ "$endpoint" =~ ^"$pr_path"$q$ ]]; then key=pull
 elif [[ "$endpoint" =~ ^"repos/$REPO/compare/$range"$q$ ]]; then
   case "$accept" in
-    "") key=compare ;;
+    "") if [[ "$endpoint" == *"per_page=1" ]]; then key=compare_total; else key=compare; fi ;;
     "Accept: application/vnd.github.diff") key=compare_diff ;;
     *) refuse "unsupported header $accept" ;;
   esac
@@ -70,12 +71,13 @@ case ",${FAKE_GH_FAIL:-}," in
   *",$key,"*) echo '{"message":"Server Error","status":"500"}'; exit 1 ;;
 esac
 
+[ "$key" = compare_total ] && body_key=compare || body_key=$key
 if [ "$key" = compare_diff ]; then
   cat "$dir/compare.diff"
   exit 0
 fi
 
-body=$(cat "$dir/$key.json")
+body=$(cat "$dir/$body_key.json")
 if [ "$key" = pull ]; then
   # Successive calls return successive entries of FAKE_GH_HEADS.
   n=$(cat "$dir/pull.count" 2>/dev/null || echo 0)
@@ -86,7 +88,11 @@ if [ "$key" = pull ]; then
     if [ "${heads[$i]}" = fail ]; then
       echo '{"message":"Server Error","status":"500"}'; exit 1
     fi
-    body=$(jq --arg h "${heads[$i]}" '.head.sha = $h' <<< "$body")
+    if [ "${heads[$i]}" = null ]; then
+      body=$(jq '.head.sha = null' <<< "$body")   # a successful call with no usable SHA
+    else
+      body=$(jq --arg h "${heads[$i]}" '.head.sha = $h' <<< "$body")
+    fi
   fi
 fi
 
