@@ -62,6 +62,11 @@ jobs:
             go.sum
             lacylights-go/go.sum
 
+      # The shared-workflow tests need no server, so run them before the server build and start can
+      # fail. make test-ci runs them again alongside the contract tests.
+      - name: Shared workflow tests (no server)
+        run: make test-workflows
+
       - name: Build lacylights-go server
         working-directory: lacylights-go
         run: |

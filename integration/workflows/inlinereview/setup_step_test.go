@@ -199,6 +199,7 @@ func runSetup(t *testing.T, sc scenario) result {
 	work := t.TempDir()     // stands in for the checkout; the step writes into ./.git/review
 	fixtures := t.TempDir() // fake gh fixtures and call log
 	bin := t.TempDir()      // holds the fake gh, first on PATH
+	tmp := t.TempDir()      // the step's TMPDIR, which must be empty afterwards
 	if err := os.Mkdir(filepath.Join(work, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +255,7 @@ func runSetup(t *testing.T, sc scenario) result {
 	// BASH_ENV, which non-interactive bash reads even with --noprofile --norc) can't change the run.
 	cmd.Env = []string{
 		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
-		"HOME=" + work, "TMPDIR=" + os.TempDir(), "LC_ALL=C",
+		"HOME=" + work, "TMPDIR=" + tmp, "LC_ALL=C",
 		"GH_TOKEN=fake-token", "REPO=" + testRepo, "PR=" + testPR,
 		"BASE_REF=" + sc.baseRef, "HEAD_SHA=" + reviewSHA,
 		"FAKE_GH_DIR=" + fixtures,
@@ -273,6 +274,10 @@ func runSetup(t *testing.T, sc scenario) result {
 			t.Fatalf("reading %s: %v", name, err)
 		}
 		return string(b)
+	}
+	// Nothing may be left in TMPDIR either: on the runner it persists into the Claude step.
+	if left, _ := os.ReadDir(tmp); len(left) != 0 {
+		t.Errorf("the step left %d entries in TMPDIR (first: %s)", len(left), left[0].Name())
 	}
 	// Every file the step left anywhere in the checkout (the reviewer can Read all of ./**).
 	var names []string
@@ -1064,8 +1069,9 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	known := []string{"lacylights-go", "lacylights-fe", "lacylights-mcp", "lacylights-rpi",
 		"lacylights-terraform", "lacylights-mac"}
 	// Any other lacylights-* checkout that has the workflow on origin/main is compared too.
+	// The docs repo checkout first, so it is reported under its own name rather than a worktree's.
 	extra, _ := filepath.Glob(filepath.Join(root, "lacylights-*"))
-	extra = append(extra, filepath.Join(root, "lacylights")) // the docs repo
+	extra = append([]string{filepath.Join(root, "lacylights")}, extra...)
 	checked := 0
 	var notChecked []string
 	defer func() {
