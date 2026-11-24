@@ -102,8 +102,11 @@ if [ "$key" = pull ]; then
 fi
 
 if [ -n "$filter" ]; then
-  # gh --jq prints strings raw and other values as compact JSON.
-  jq -r -c "$filter" <<< "$body"
+  # gh --jq prints strings raw and other values as compact JSON. Real gh evaluates --jq with its built-in
+  # gojq, so use gojq when it is installed. With plain jq, a jq-only builtin could pass here but fail on
+  # the runner.
+  if command -v gojq >/dev/null 2>&1; then jqbin=gojq; else jqbin=jq; fi
+  "$jqbin" -r -c "$filter" <<< "$body"
 else
   printf '%s\n' "$body"
 fi

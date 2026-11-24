@@ -329,7 +329,8 @@ func assertClean(t *testing.T, r result) {
 	// arithmetic), plus the fake gh's own refusals.
 	// bash <= 5.2 says "integer expression expected", bash 5.3 says "integer expected".
 	mustNotContain(t, "log", r.log, "integer expression expected", "integer expected", "command not found", "jq: error", "syntax error",
-		"No such file or directory", "bad substitution", "ambiguous redirect", "unbound variable", "fake gh:")
+		"No such file or directory", "bad substitution", "ambiguous redirect", "unbound variable", "fake gh:",
+		"parse error") // jq 1.6 prints "parse error:", 1.7+ "jq: parse error:"
 	// The author's text is fenced exactly once, unless the title fetch failed.
 	// Decided from the step's log, not pr-meta.md, whose fenced part is author-controlled text.
 	if !strings.Contains(r.log, "::warning::Could not fetch title and description") {
