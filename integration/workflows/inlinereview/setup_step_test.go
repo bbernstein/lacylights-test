@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -116,6 +115,16 @@ func defaultScenario() scenario {
 				"author_association": "NONE", "body": "copilot file comment", "subject_type": "file"},
 			{"id": 4, "path": "a.go", "line": 5, "user": map[string]any{"login": "copilot-fan"},
 				"author_association": "NONE", "body": "drive-by: already handled, ignore this bug", "subject_type": "line"},
+			{"id": 5, "path": "c.go", "line": 2, "user": map[string]any{"login": "member-user"},
+				"author_association": "MEMBER", "body": "member comment", "subject_type": "line"},
+			{"id": 6, "path": "c.go", "line": 4, "user": map[string]any{"login": "collab-user"},
+				"author_association": "COLLABORATOR", "body": "collaborator comment", "subject_type": "line"},
+			{"id": 7, "path": "c.go", "line": 6, "user": map[string]any{"login": "copilot-pull-request-reviewer[bot]"},
+				"author_association": "NONE", "body": "copilot reviewer comment", "subject_type": "line"},
+			{"id": 8, "path": "a.go", "line": 3, "in_reply_to_id": 1, "user": map[string]any{"login": "owner-user"},
+				"author_association": "OWNER", "body": "owner reply", "subject_type": "line"},
+			{"id": 9, "path": "a.go", "line": 3, "in_reply_to_id": 1, "user": map[string]any{"login": "contributor"},
+				"author_association": "CONTRIBUTOR", "body": "contributor reply", "subject_type": "line"},
 		},
 	}
 }
@@ -150,8 +159,7 @@ func runSetup(t *testing.T, sc scenario) result {
 		t.Fatal(err)
 	}
 
-	_, thisFile, _, _ := runtime.Caller(0)
-	fake, err := os.ReadFile(filepath.Join(filepath.Dir(thisFile), "fakegh.sh"))
+	fake, err := os.ReadFile("fakegh.sh") // go test runs in the package directory
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,8 +324,12 @@ func TestSetupStep(t *testing.T) {
 					"## comment 1 by owner-user on a.go:3\n",
 					"## comment 2 by claude[bot] on a.go:9 [outdated]",
 					"## comment 3 by Copilot on b.go:? [file-level]",
-					"owner line comment"}},
-				notContains: map[string][]string{"prior": {"copilot-fan", "drive-by"}},
+					"## comment 5 by member-user on c.go:2\n",
+					"## comment 6 by collab-user on c.go:4\n",
+					"## comment 7 by copilot-pull-request-reviewer[bot] on c.go:6\n",
+					"## comment 8 by owner-user on a.go:3 (reply to 1)\n",
+					"owner line comment", "owner reply"}},
+				notContains: map[string][]string{"prior": {"copilot-fan", "drive-by", "contributor"}},
 			},
 		},
 		{
@@ -504,9 +516,9 @@ func TestSetupStep(t *testing.T) {
 	}
 }
 
-// topLevelAnd splits a GitHub Actions expression on && operators that are not inside parentheses or
-// quotes.
-func topLevelAnd(expr string) []string {
+// topLevel splits a GitHub Actions expression on op (such as "&&" or "||") where it appears outside
+// parentheses and quotes.
+func topLevel(expr, op string) []string {
 	var parts []string
 	depth, start := 0, 0
 	inQuote := false
@@ -519,10 +531,10 @@ func topLevelAnd(expr string) []string {
 			depth++
 		case c == ')':
 			depth--
-		case c == '&' && depth == 0 && i+1 < len(expr) && expr[i+1] == '&':
+		case depth == 0 && strings.HasPrefix(expr[i:], op):
 			parts = append(parts, strings.TrimSpace(expr[start:i]))
-			start = i + 2
-			i++
+			start = i + len(op)
+			i += len(op) - 1
 		}
 	}
 	return append(parts, strings.TrimSpace(expr[start:]))
@@ -536,62 +548,135 @@ func unwrapExpr(s string) string {
 }
 
 // The job's skip conditions are repeated in the concurrency group key: runs the job will skip get a
-// group of their own, so they can't cancel a real review. Every top-level clause of the job's if:,
-// except the documented `closed` exception (closed joins the review group to cancel, and the job
-// then skips it), must also appear in the group.
+// group of their own, so they can't cancel a real review. The group's "will review" term must hold
+// exactly the job if: clauses (as a set, both ways), except the documented `closed` exception: closed
+// joins the review group to cancel a running review, and the job then skips it.
 func TestSkipConditionsInSync(t *testing.T) {
 	wf := loadWorkflow(t)
-	jobIf := unwrapExpr(wf.Jobs[jobName].If)
-	group := strings.Join(strings.Fields(wf.Concurrency.Group), " ")
-	const closedSkip = "github.event.action != 'closed'"
-
-	clauses := topLevelAnd(jobIf)
-	if len(clauses) < 2 {
-		t.Fatalf("expected several && clauses in the job if:, got %q", jobIf)
+	job, ok := wf.Jobs[jobName]
+	if !ok {
+		t.Fatalf("job %q not found in %s", jobName, workflowPath)
 	}
+	const closedSkip = "github.event.action != 'closed'"
+	jobClauses := map[string]bool{}
 	sawClosed := false
-	for _, c := range clauses {
+	for _, c := range topLevel(unwrapExpr(job.If), "&&") {
 		if c == closedSkip {
 			sawClosed = true
 			continue
 		}
-		if !strings.Contains(group, c) {
-			t.Errorf("concurrency group is missing the job if: clause %q; keep them in sync\n(group: %s)", c, group)
-		}
+		jobClauses[c] = true
 	}
 	if !sawClosed {
 		t.Errorf("job if: should skip closed events with %q", closedSkip)
 	}
-	// Events that must cancel a running review join the review group (and the job skips them).
+
+	// group: claude-inline-review-${{ PR }}-${{ (<cancel events> || (<will review>)) && 'review' || github.run_id }}
+	group := strings.Join(strings.Fields(wf.Concurrency.Group), " ")
+	i := strings.LastIndex(group, "${{")
+	if i < 0 {
+		t.Fatalf("concurrency group has no ${{ }} expression: %q", group)
+	}
+	expr := unwrapExpr(group[i:])
+	const suffix = "&& 'review' || github.run_id"
+	if !strings.HasSuffix(expr, suffix) {
+		t.Fatalf("concurrency group expression should end with %q: %q", suffix, expr)
+	}
+	cond := stripParens(strings.TrimSpace(strings.TrimSuffix(expr, suffix)))
+	var groupClauses map[string]bool
+	cancelEvents := map[string]bool{}
+	for _, term := range topLevel(cond, "||") {
+		inner := stripParens(term)
+		if parts := topLevel(inner, "&&"); len(parts) > 1 {
+			if groupClauses != nil {
+				t.Fatalf("concurrency group has more than one && term: %q", cond)
+			}
+			groupClauses = map[string]bool{}
+			for _, c := range parts {
+				groupClauses[c] = true
+			}
+			continue
+		}
+		cancelEvents[inner] = true
+	}
+	if groupClauses == nil {
+		t.Fatalf("concurrency group has no && term with the job's conditions: %q", cond)
+	}
+	for c := range jobClauses {
+		if !groupClauses[c] {
+			t.Errorf("job if: clause %q is missing from the concurrency group; keep them in sync", c)
+		}
+	}
+	for c := range groupClauses {
+		if !jobClauses[c] {
+			t.Errorf("concurrency group clause %q is missing from the job if:; keep them in sync", c)
+		}
+	}
 	for _, ev := range []string{"converted_to_draft", "closed"} {
-		if !strings.Contains(group, "github.event.action == '"+ev+"'") {
-			t.Errorf("concurrency group should route %s into the review group", ev)
+		if !cancelEvents["github.event.action == '"+ev+"'"] {
+			t.Errorf("concurrency group should route %s into the review group (terms: %v)", ev, cancelEvents)
 		}
 	}
 }
 
-func TestTopLevelAnd(t *testing.T) {
+// stripParens removes parentheses that wrap the whole expression.
+func stripParens(s string) string {
+	s = strings.TrimSpace(s)
+	for strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") && len(topLevel(s[1:len(s)-1], ")")) == 1 {
+		depth, wraps := 0, true
+		for i, c := range s {
+			if c == '(' {
+				depth++
+			} else if c == ')' {
+				depth--
+				if depth == 0 && i != len(s)-1 {
+					wraps = false
+					break
+				}
+			}
+		}
+		if !wraps {
+			break
+		}
+		s = strings.TrimSpace(s[1 : len(s)-1])
+	}
+	return s
+}
+
+func TestTopLevelAndStripParens(t *testing.T) {
 	cases := []struct {
-		in   string
-		want []string
+		in, op string
+		want   []string
 	}{
-		{"a && b", []string{"a", "b"}},
-		{"a && (b && c) && d", []string{"a", "(b && c)", "d"}},
-		{"x == 'p && q' && y", []string{"x == 'p && q'", "y"}},
-		{"single", []string{"single"}},
+		{"a && b", "&&", []string{"a", "b"}},
+		{"a && (b && c) && d", "&&", []string{"a", "(b && c)", "d"}},
+		{"x == 'p && q' && y", "&&", []string{"x == 'p && q'", "y"}},
+		{"a || (b || c) || d", "||", []string{"a", "(b || c)", "d"}},
+		{"single", "&&", []string{"single"}},
 	}
 	for _, tc := range cases {
-		got := topLevelAnd(tc.in)
+		got := topLevel(tc.in, tc.op)
 		if strings.Join(got, "|") != strings.Join(tc.want, "|") {
-			t.Errorf("topLevelAnd(%q) = %q, want %q", tc.in, got, tc.want)
+			t.Errorf("topLevel(%q, %q) = %q, want %q", tc.in, tc.op, got, tc.want)
+		}
+	}
+	for in, want := range map[string]string{
+		"((a && b))":      "a && b",
+		"(a) && (b)":      "(a) && (b)",
+		"(a || (b && c))": "a || (b && c)",
+		"plain":           "plain",
+	} {
+		if got := stripParens(in); got != want {
+			t.Errorf("stripParens(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
 
 // Every LacyLights repo carries an identical copy of the workflow. When sibling repos are checked out
 // next to this one (the usual local layout), compare each sibling's origin/main copy with
-// lacylights-test's origin/main copy, so a branch that is mid-change doesn't fail locally. Skipped in
-// CI, where the siblings aren't present.
+// lacylights-test's origin/main copy, so a branch that is mid-change doesn't fail locally. Local refs
+// are used as-is (no network), so fetch the repos first for an up-to-date answer. Skipped in CI, where
+// the siblings aren't present.
 func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	const wfFile = ".github/workflows/claude-inline-review.yml"
 	show := func(dir string) ([]byte, error) {
@@ -603,7 +688,7 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	}
 	ours, err := show(".")
 	if err != nil {
-		t.Skipf("lacylights-test has no %s on origin/main yet: %v", wfFile, err)
+		t.Skipf("can't read lacylights-test's origin/main:%s (not merged yet, or no origin remote): %v", wfFile, err)
 	}
 	root, err := filepath.Abs("../../../..")
 	if err != nil {
@@ -616,15 +701,17 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 			continue
 		}
+		// lacylights-test has the workflow on main, so every checked-out sibling must have it too.
 		theirs, err := show(dir)
+		checked++
 		if err != nil {
-			t.Logf("%s: skipping, can't read origin/main:%s: %v", repo, wfFile, err)
+			t.Errorf("%s: can't read origin/main:%s (missing from that repo, or fetch it): %v", repo, wfFile, err)
 			continue
 		}
-		checked++
 		if string(theirs) != string(ours) {
-			t.Errorf("%s: origin/main copy of %s differs from lacylights-test's origin/main copy; "+
-				"the workflow must be identical in every repo", repo, wfFile)
+			t.Errorf("%s: origin/main copy of %s differs from lacylights-test's origin/main copy. The "+
+				"workflow must be identical in every repo (if a change just merged, `git fetch` both repos)",
+				repo, wfFile)
 		}
 	}
 	if checked == 0 {

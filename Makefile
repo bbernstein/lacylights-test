@@ -151,15 +151,18 @@ test:
 ## This skips fade/DMX tests that require Art-Net packet capture
 test-ci:
 	@echo "Running CI-safe tests (no Art-Net required)..."
-	@# Workflow tests first: they need no server, so a contract-test failure can't hide them.
-	$(GO) test $(GOFLAGS) -count=1 ./integration/workflows/...
+	@# Both suites always run, and the target fails if either does, so neither can hide the other.
+	@# The workflow tests need no server.
+	@status=0; \
+	$(GO) test $(GOFLAGS) -count=1 ./integration/workflows/... || status=1; \
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) SKIP_FADE_TESTS=1 \
-		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/dataexport/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/... ./contracts/settings/... ./contracts/undo/...
+		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/dataexport/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/... ./contracts/settings/... ./contracts/undo/... || status=1; \
+	exit $$status
 
 ## test-workflows: Test the shared claude-inline-review workflow's setup step (no server needed)
 test-workflows:
 	@# -count=1: the cross-repo check reads sibling repos through git, which go test's cache can't see.
-	$(GO) test $(GOFLAGS) -count=1 -v ./integration/workflows/...
+	$(GO) test $(GOFLAGS) -count=1 ./integration/workflows/...
 
 ## test-all: Run all tests including integration tests
 test-all:
