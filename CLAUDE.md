@@ -225,7 +225,7 @@ When writing a new test:
 - [ ] Test name clearly describes what's being validated
 - [ ] Includes happy path AND error cases
 - [ ] Creates own data, cleans up after
-- [ ] Validates behavior, not implementation
+- [ ] Validates behavior, not implementation (except the shared-workflow tests; see "Exception: shared workflows")
 - [ ] Clear assertions with helpful error messages
 - [ ] Comments document the contract being validated
 - [ ] Added to appropriate Make target

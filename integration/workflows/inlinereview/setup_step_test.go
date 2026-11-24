@@ -300,6 +300,15 @@ func assertClean(t *testing.T, r result) {
 	// arithmetic), plus the fake gh's own refusals.
 	mustNotContain(t, "log", r.log, "integer expression expected", "command not found", "jq: error", "syntax error",
 		"No such file or directory", "bad substitution", "ambiguous redirect", "fake gh:")
+	// The author's text is fenced exactly once, unless the title fetch failed.
+	if !strings.Contains(r.meta, "(could not fetch title and description)") {
+		if n := strings.Count(strings.ToLower(r.meta), "</untrusted-pr-text>"); n != 1 {
+			t.Errorf("pr-meta.md must hold exactly one </untrusted-pr-text> (the workflow's own), got %d", n)
+		}
+		if n := strings.Count(strings.ToLower(r.meta), "<untrusted-pr-text>"); n != 1 {
+			t.Errorf("pr-meta.md must hold exactly one <untrusted-pr-text>, got %d", n)
+		}
+	}
 	if r.refused != "" {
 		t.Errorf("the step called gh in a way the fake doesn't support (add it to fakegh.sh and the fixtures):\n%s", r.refused)
 	}
@@ -905,6 +914,9 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	// Siblings are normally next to lacylights-test; LACYLIGHTS_ROOT overrides that, for example for a
 	// worktree nested somewhere else.
 	root := os.Getenv("LACYLIGHTS_ROOT")
+	if root != "" && !filepath.IsAbs(root) {
+		t.Fatalf("LACYLIGHTS_ROOT must be an absolute path (go test runs in the package directory), got %q", root)
+	}
 	if root == "" {
 		if root, err = filepath.Abs("../../../.."); err != nil {
 			t.Fatal(err)
@@ -1102,10 +1114,32 @@ fi
 	// branch names) reaches the reviewer as fenced data in .git/review.
 	allowedExpr := map[string]bool{"${{ github.repository }}": true, "${{ github.event.pull_request.number }}": true,
 		"${{ github.event.pull_request.head.sha }}": true}
-	prompt, _ := review["prompt"].(string)
-	for _, e := range regexp.MustCompile(`\$\{\{[^}]*\}\}`).FindAllString(prompt, -1) {
-		if !allowedExpr[strings.Join(strings.Fields(e), " ")] {
-			t.Errorf("prompt interpolates %s; only %v are allowed", e, allowedExpr)
+	// Non-greedy up to the first "}}", so an expression containing "}" (for example format('{0}', ...))
+	// is still caught whole, and the counts must agree so nothing slips past the pattern.
+	exprRe := regexp.MustCompile(`(?s)\$\{\{.*?\}\}`)
+	checkExprs := func(input, value string, allowed map[string]bool) {
+		found := exprRe.FindAllString(value, -1)
+		if len(found) != strings.Count(value, "${{") {
+			t.Errorf("input %q: unbalanced ${{ }} expression", input)
+		}
+		for _, e := range found {
+			if !allowed[strings.Join(strings.Fields(e), " ")] {
+				t.Errorf("input %q interpolates %s; only %v are allowed", input, e, allowed)
+			}
+		}
+	}
+	// Every input of the Claude step, not only the prompt: an expression in claude_args could add flags.
+	for k, v := range review {
+		str, _ := v.(string)
+		switch k {
+		case "prompt":
+			checkExprs(k, str, allowedExpr)
+		case "claude_code_oauth_token":
+			if str != "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}" {
+				t.Errorf("claude_code_oauth_token must be exactly ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}, got %q", str)
+			}
+		default:
+			checkExprs(k, str, map[string]bool{})
 		}
 	}
 

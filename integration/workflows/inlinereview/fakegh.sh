@@ -32,7 +32,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --paginate) shift ;;
     --jq) filter=$2; shift 2 ;;
-    -H) accept=$2; shift 2 ;;
+    -H) [ -z "$accept" ] || refuse "more than one -H header: $accept / $2"; accept=$2; shift 2 ;;
     -*) refuse "unsupported flag $1" ;;
     *) endpoint=$1; shift ;;
   esac
