@@ -320,7 +320,8 @@ func assertClean(t *testing.T, r result) {
 	}
 	// Shell and tool errors the step can survive under bash -e (inside $(...), after ||, or in
 	// arithmetic), plus the fake gh's own refusals.
-	mustNotContain(t, "log", r.log, "integer expression expected", "command not found", "jq: error", "syntax error",
+	// bash <= 5.2 says "integer expression expected", bash 5.3 says "integer expected".
+	mustNotContain(t, "log", r.log, "integer expression expected", "integer expected", "command not found", "jq: error", "syntax error",
 		"No such file or directory", "bad substitution", "ambiguous redirect", "unbound variable", "fake gh:")
 	// The author's text is fenced exactly once, unless the title fetch failed.
 	if !strings.Contains(r.meta, "(could not fetch title and description)") {
