@@ -34,8 +34,10 @@ type workflow struct {
 	Jobs map[string]struct {
 		If    string `yaml:"if"`
 		Steps []struct {
-			Name string `yaml:"name"`
-			Run  string `yaml:"run"`
+			Name string         `yaml:"name"`
+			Uses string         `yaml:"uses"`
+			Run  string         `yaml:"run"`
+			With map[string]any `yaml:"with"`
 		} `yaml:"steps"`
 	} `yaml:"jobs"`
 }
@@ -570,6 +572,13 @@ func unwrapExpr(s string) string {
 	return s
 }
 
+// normClause normalizes a clause for comparison: no redundant outer parentheses and no spaces just
+// inside parentheses, so `( a || b )` and `(a || b)` compare equal.
+func normClause(s string) string {
+	s = stripParens(strings.Join(strings.Fields(s), " "))
+	return strings.NewReplacer("( ", "(", " )", ")").Replace(s)
+}
+
 // The job's skip conditions are repeated in the concurrency group key: runs the job will skip get a
 // group of their own, so they can't cancel a real review. The group's "will review" term must hold
 // exactly the job if: clauses (as a set, both ways), except the documented `closed` exception: closed
@@ -584,6 +593,7 @@ func TestSkipConditionsInSync(t *testing.T) {
 	jobClauses := map[string]bool{}
 	sawClosed := false
 	for _, c := range topLevel(unwrapExpr(job.If), "&&") {
+		c = normClause(c)
 		if c == closedSkip {
 			sawClosed = true
 			continue
@@ -616,11 +626,11 @@ func TestSkipConditionsInSync(t *testing.T) {
 			}
 			groupClauses = map[string]bool{}
 			for _, c := range parts {
-				groupClauses[c] = true
+				groupClauses[normClause(c)] = true
 			}
 			continue
 		}
-		cancelEvents[inner] = true
+		cancelEvents[normClause(inner)] = true
 	}
 	if groupClauses == nil {
 		t.Fatalf("concurrency group has no && term with the job's conditions: %q", cond)
@@ -718,7 +728,8 @@ func TestTopLevelAndStripParens(t *testing.T) {
 // (INLINE_REVIEW_DRIFT_CHECK=1) compares each checked-out sibling's origin/main copy with
 // lacylights-test's origin/main copy, so a branch that is mid-change doesn't fail it. A checked-out
 // sibling without the workflow on origin/main is an error. Local refs are used as-is (no network), so
-// fetch the repos first. CI doesn't run it: the siblings aren't checked out there.
+// fetch the repos first. Once opted in, anything that prevents a real comparison fails. CI doesn't run
+// it: the siblings aren't checked out there.
 func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	// Opt-in, so routine runs (make test-ci) never fail because of another repo's merge or fetch
 	// state. `make test-workflows` turns it on.
@@ -733,13 +744,18 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		}
 		return out, err
 	}
+	// Opted in, so anything that prevents a real comparison is a failure, not a skip.
 	ours, err := show(".")
 	if err != nil {
-		t.Skipf("can't read lacylights-test's origin/main:%s (not merged yet, or no origin remote): %v", wfFile, err)
+		t.Fatalf("can't read lacylights-test's origin/main:%s (not merged yet, no origin remote, or not fetched): %v", wfFile, err)
 	}
-	root, err := filepath.Abs("../../../..")
-	if err != nil {
-		t.Fatal(err)
+	// Siblings are normally next to lacylights-test; LACYLIGHTS_ROOT overrides that, for example for a
+	// worktree nested somewhere else.
+	root := os.Getenv("LACYLIGHTS_ROOT")
+	if root == "" {
+		if root, err = filepath.Abs("../../../.."); err != nil {
+			t.Fatal(err)
+		}
 	}
 	checked := 0
 	for _, repo := range []string{"lacylights-go", "lacylights-fe", "lacylights-mcp", "lacylights-rpi",
@@ -762,6 +778,70 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		}
 	}
 	if checked == 0 {
-		t.Skip("no sibling repo checkouts found next to lacylights-test")
+		t.Fatalf("no sibling repo checkouts found in %s; set LACYLIGHTS_ROOT to the folder that holds them", root)
+	}
+}
+
+// The reviewer's sandbox is the workflow's main security property. Pin it: a change that loosens any
+// part of it must also change this test.
+func TestReviewerSandbox(t *testing.T) {
+	job := loadWorkflow(t).Jobs[jobName]
+	var checkout, review map[string]any
+	for _, st := range job.Steps {
+		switch {
+		case strings.HasPrefix(st.Uses, "actions/checkout@"):
+			checkout = st.With
+		case strings.HasPrefix(st.Uses, "anthropics/claude-code-action@"):
+			review = st.With
+		}
+	}
+	if checkout == nil || review == nil {
+		t.Fatalf("checkout or claude-code-action step not found")
+	}
+	if checkout["persist-credentials"] != false {
+		t.Errorf("checkout must set persist-credentials: false, got %v", checkout["persist-credentials"])
+	}
+	if checkout["ref"] != "${{ github.event.pull_request.head.sha }}" {
+		t.Errorf("checkout must use the PR head SHA, got %v", checkout["ref"])
+	}
+
+	args, _ := review["claude_args"].(string)
+	flag := func(name string) string {
+		re := name + ` "`
+		i := strings.Index(args, re)
+		if i < 0 {
+			t.Fatalf("claude_args has no %s", name)
+		}
+		rest := args[i+len(re):]
+		return rest[:strings.Index(rest, `"`)]
+	}
+	set := func(list string) map[string]bool {
+		m := map[string]bool{}
+		for _, v := range strings.Split(list, ",") {
+			m[strings.TrimSpace(v)] = true
+		}
+		return m
+	}
+	if !strings.Contains(args, "--permission-mode default") {
+		t.Errorf("claude_args must set --permission-mode default (otherwise the mode depends on allowed_bots)")
+	}
+	wantAllowed := set("Read(./**),Glob(./**),Grep(./**),mcp__github_inline_comment__create_inline_comment")
+	gotAllowed := set(flag("--allowed-tools"))
+	for tool := range gotAllowed {
+		if !wantAllowed[tool] {
+			t.Errorf("--allowed-tools grants %q; the reviewer must get only %v", tool, wantAllowed)
+		}
+	}
+	for tool := range wantAllowed {
+		if !gotAllowed[tool] {
+			t.Errorf("--allowed-tools is missing %q", tool)
+		}
+	}
+	denied := set(flag("--disallowed-tools"))
+	for _, tool := range []string{"Bash", "WebFetch", "WebSearch", "Read(//proc/**)", "Read(//sys/**)",
+		"Read(//home/runner/work/_temp/**)", "Read(~/.claude/**)", "Read(~/.config/**)", "Read(./.git/config)"} {
+		if !denied[tool] {
+			t.Errorf("--disallowed-tools must include %q", tool)
+		}
 	}
 }

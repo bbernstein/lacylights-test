@@ -35,14 +35,21 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-case "$endpoint" in
-  repos/*/*/pulls/*/files) key=pull_files ;;
-  repos/*/*/pulls/*/comments) key=comments ;;
-  repos/*/*/pulls/*) key=pull ;;
-  repos/*/*/compare/*)
-    if [ "$accept" = "Accept: application/vnd.github.diff" ]; then key=compare_diff; else key=compare; fi ;;
-  *) echo '{"message":"Not Found","status":"404"}'; exit 1 ;;
-esac
+# Match endpoints exactly (in a case pattern, * also matches "/", so use regexes). Anything else is a
+# 404, so a workflow change that calls a new endpoint fails the tests instead of getting wrong data.
+seg='[^/]+'
+if [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+/files$ ]]; then key=pull_files
+elif [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+/comments$ ]]; then key=comments
+elif [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+$ ]]; then key=pull
+elif [[ "$endpoint" =~ ^repos/$seg/$seg/compare/$seg$ ]]; then
+  case "$accept" in
+    "") key=compare ;;
+    "Accept: application/vnd.github.diff") key=compare_diff ;;
+    *) echo "fake gh: unsupported header $accept" >&2; exit 2 ;;
+  esac
+else
+  echo '{"message":"Not Found","status":"404"}'; exit 1
+fi
 
 case ",${FAKE_GH_FAIL:-}," in
   *",$key,"*) echo '{"message":"Server Error","status":"500"}'; exit 1 ;;
