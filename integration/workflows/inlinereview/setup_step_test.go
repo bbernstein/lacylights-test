@@ -1249,7 +1249,9 @@ func TestReviewerSandbox(t *testing.T) {
 	// No inherited environment or defaults: the Claude step and CLI inherit workflow- and job-level env
 	// (for example ANTHROPIC_BASE_URL would redirect the reviewer).
 	// A GitHub-hosted, fresh runner with no sidecars: a self-hosted runner would keep the token and the
-	// PR checkout on a persistent machine.
+	// PR checkout on a persistent machine. timeout-minutes is pinned because it bounds how long the job
+	// that holds the Claude token can run. 45 was chosen with --max-turns 150 (ledger R7); change both
+	// together and update this test.
 	if job.RunsOn != "ubuntu-latest" || job.Services != nil || job.ContinueOnError != nil || job.Strategy != nil ||
 		job.TimeoutMinutes != 45 {
 		t.Errorf("job must run on ubuntu-latest with timeout-minutes 45 and no services, strategy or "+
