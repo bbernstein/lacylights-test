@@ -334,7 +334,8 @@ func assertClean(t *testing.T, r result) {
 	// bash <= 5.2 says "integer expression expected", bash 5.3 says "integer expected".
 	mustNotContain(t, "log", r.log, "integer expression expected", "integer expected", "command not found", "jq: error", "syntax error",
 		"No such file or directory", "bad substitution", "ambiguous redirect", "unbound variable", "fake gh:",
-		"parse error") // jq 1.6 prints "parse error:", 1.7+ "jq: parse error:"
+		"parse error", // jq 1.6 prints "parse error:", 1.7+ "jq: parse error:"
+		"gojq: ")      // gojq (used for --jq when installed, as in CI) prefixes every error with "gojq: "
 	// The author's text is fenced exactly once, unless the title fetch failed.
 	// Decided from the step's log, not pr-meta.md, whose fenced part is author-controlled text.
 	if !strings.Contains(r.log, "::warning::Could not fetch title and description") {
@@ -1153,6 +1154,10 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		}
 		// A checkout (.git directory) or a worktree (.git file) both work with git show. Checked before
 		// the common-dir de-duplication, so plain folders inside an enclosing repo aren't merged into it.
+		if _, err := os.Stat(dir); err != nil {
+			notChecked = append(notChecked, repo+" (not checked out)") // e.g. the docs repo isn't here
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 			notChecked = append(notChecked, repo+" (not a git checkout)")
 			continue
