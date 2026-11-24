@@ -72,6 +72,7 @@ func setupScript(t *testing.T) string {
 
 // scenario describes the canned GitHub API state for one run of the setup step.
 type scenario struct {
+	baseRef     string   // the PR's base branch (BASE_REF)
 	heads       []string // successive head SHAs returned by pulls/N (FAKE_GH_HEADS)
 	fail        []string // fake gh keys that fail (FAKE_GH_FAIL)
 	pullFiles   []map[string]any
@@ -100,6 +101,7 @@ func file(name, status string, extra map[string]any) map[string]any {
 
 func defaultScenario() scenario {
 	return scenario{
+		baseRef:     baseRef,
 		heads:       []string{reviewSHA},
 		pullFiles:   []map[string]any{file("pulls-a.go", "modified", nil), file("pulls-b.go", "added", nil)},
 		compareFile: []map[string]any{file("compare-only.go", "modified", nil)},
@@ -184,7 +186,7 @@ func runSetup(t *testing.T, sc scenario) result {
 	cmd.Env = append(os.Environ(),
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"GH_TOKEN=fake-token", "REPO="+testRepo, "PR="+testPR,
-		"BASE_REF="+baseRef, "HEAD_SHA="+reviewSHA,
+		"BASE_REF="+sc.baseRef, "HEAD_SHA="+reviewSHA,
 		"FAKE_GH_DIR="+fixtures,
 		"FAKE_GH_HEADS="+strings.Join(sc.heads, ","),
 		"FAKE_GH_FAIL="+strings.Join(sc.fail, ","),
@@ -442,6 +444,30 @@ func TestSetupStep(t *testing.T) {
 				sc.compareFile = filesN(299)
 			},
 			want: check{notContains: map[string][]string{"meta": {"NOTE:"}}},
+		},
+		{
+			// A failed total_commits/commits call must not suppress the file-cap note.
+			name: "file cap note survives failed commit calls",
+			modify: func(sc *scenario) {
+				sc.fail = []string{"compare"} // commits and total_commits fail; pulls/N/files works
+				sc.pullFiles = filesN(3000)
+			},
+			want: check{
+				contains: map[string][]string{
+					"log":  {"::warning::Could not fetch the commit list"},
+					"meta": {"NOTE: GitHub returned 3000 changed files, the most it returns here"},
+				},
+				notContains: map[string][]string{"meta": {"commit list above is incomplete"}},
+			},
+		},
+		{
+			// git allows # and % in branch names; the compare path must be URL-encoded.
+			name:   "base branch name is URL-encoded",
+			modify: func(sc *scenario) { sc.baseRef = "release#2/50%" },
+			want: check{contains: map[string][]string{
+				"calls": {"repos/" + testRepo + "/compare/release%232%2F50%25..." + reviewSHA},
+				"meta":  {"Reviewing release#2/50%..." + reviewSHA},
+			}},
 		},
 		{
 			// compare JSON (commits, total_commits) fails while the diff still works.
