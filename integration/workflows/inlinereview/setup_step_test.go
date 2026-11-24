@@ -390,11 +390,11 @@ func TestSetupStep(t *testing.T) {
 						"- 0000001 \"commit 1\"", "- 0000002 \"commit 2\"",
 						"- \"pulls-a.go\" (modified, +1 -0)", "- \"pulls-b.go\" (added, +1 -0)"},
 					"diff": {"compare diff body"},
-					"calls": {"repos/" + testRepo + "/compare/main..." + reviewSHA,
+					"calls": {"repos/" + testRepo + "/compare/main..." + reviewSHA + " -H Accept: application/vnd.github.diff\n",
 						"--paginate repos/" + testRepo + "/pulls/" + testPR + "/files?per_page=100",
 						"--paginate repos/" + testRepo + "/pulls/" + testPR + "/comments?per_page=100",
 						"--paginate repos/" + testRepo + "/compare/main..." + reviewSHA + "?per_page=100",
-						"compare/main..." + reviewSHA + "?per_page=1"},
+						"compare/main..." + reviewSHA + "?per_page=1 --jq .total_commits\n"},
 					"outputs": {"diff_ok=true"},
 				},
 				notContains: map[string][]string{
@@ -987,6 +987,7 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		"lacylights-terraform", "lacylights-mac"}
 	// Any other lacylights-* checkout that has the workflow on origin/main is compared too.
 	extra, _ := filepath.Glob(filepath.Join(root, "lacylights-*"))
+	extra = append(extra, filepath.Join(root, "lacylights")) // the docs repo
 	checked := 0
 	var notChecked []string
 	defer func() {
@@ -1000,10 +1001,11 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	}
 	for _, dir := range extra {
 		repo := filepath.Base(dir)
-		if isKnown[repo] || strings.Contains(repo, "-wt") {
-			continue // worktrees of a known repo are covered by that repo's origin/main
+		if isKnown[repo] {
+			continue
 		}
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		// A worktree has a .git file (not a directory); its repo's origin/main is checked via the repo.
+		if fi, err := os.Stat(filepath.Join(dir, ".git")); err != nil || !fi.IsDir() {
 			continue
 		}
 		theirs, err := show(dir)
@@ -1344,5 +1346,46 @@ func TestShellSplit(t *testing.T) {
 		if (err != nil) != tc.wantErr || strings.Join(got, "|") != strings.Join(tc.want, "|") {
 			t.Errorf("shellSplit(%q) = %q, %v; want %q, err=%v", tc.in, got, err, tc.want, tc.wantErr)
 		}
+	}
+}
+
+// The fake gh's refusals are what make assertClean's "refused.log is empty" check meaningful, so test
+// them directly.
+func TestFakeGHRefuses(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq is required")
+	}
+	base := "repos/" + testRepo
+	good := base + "/compare/main..." + reviewSHA
+	cases := []struct {
+		name string
+		args []string
+	}{
+		{"wrong repo", []string{"api", "repos/other/repo/pulls/" + testPR}},
+		{"wrong PR", []string{"api", base + "/pulls/1"}},
+		{"extra path segment", []string{"api", base + "/pulls/" + testPR + "/reviews"}},
+		{"two-dot range", []string{"api", base + "/compare/main.." + reviewSHA}},
+		{"other head", []string{"api", base + "/compare/main..." + newerSHA}},
+		{"unknown flag", []string{"api", "--method", "POST", good}},
+		{"stray header", []string{"api", base + "/pulls/" + testPR, "-H", "Accept: application/vnd.github.diff"}},
+		{"second header", []string{"api", good, "-H", "Accept: application/vnd.github.diff", "-H", "X-Other: 1"}},
+		{"second endpoint", []string{"api", good, base + "/pulls/1"}},
+		{"jq without filter", []string{"api", good, "--jq"}},
+		{"not api", []string{"pr", "view"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cmd := exec.Command("bash", "fakegh.sh")
+			cmd.Args = append(cmd.Args, tc.args...)
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "FAKE_GH_DIR=" + dir, "REPO=" + testRepo, "PR=" + testPR,
+				"BASE_REF=main", "HEAD_SHA=" + reviewSHA}
+			if err := cmd.Run(); err == nil {
+				t.Errorf("fake gh accepted %q; it must refuse", tc.args)
+			}
+			if b, _ := os.ReadFile(filepath.Join(dir, "refused.log")); len(b) == 0 {
+				t.Errorf("fake gh refused %q without recording it in refused.log", tc.args)
+			}
+		})
 	}
 }
