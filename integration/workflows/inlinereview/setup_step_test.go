@@ -773,9 +773,14 @@ func TestSkipConditionsInSync(t *testing.T) {
 		t.Fatalf("job %q not found in %s", jobName, workflowPath)
 	}
 	const closedSkip = "github.event.action != 'closed'"
+	jobIf := unwrapExpr(job.If)
+	// A top-level || would make the && clauses below a partial view of the condition (precedence).
+	if parts := topLevel(jobIf, "||"); len(parts) != 1 {
+		t.Fatalf("job if: must be a single && chain at the top level, found a top-level ||: %q", jobIf)
+	}
 	jobClauses := map[string]bool{}
 	sawClosed := false
-	for _, c := range topLevel(unwrapExpr(job.If), "&&") {
+	for _, c := range topLevel(jobIf, "&&") {
 		c = normClause(c)
 		if c == closedSkip {
 			sawClosed = true
@@ -808,12 +813,21 @@ func TestSkipConditionsInSync(t *testing.T) {
 	if !strings.HasSuffix(expr, suffix) {
 		t.Fatalf("concurrency group expression should end with %q: %q", suffix, expr)
 	}
-	cond := stripParens(strings.TrimSpace(strings.TrimSuffix(expr, suffix)))
+	// The condition before the suffix must be one parenthesised group: without it, && binds tighter
+	// than ||, so closed or converted_to_draft would produce "-true" rather than "-review".
+	raw := strings.TrimSpace(strings.TrimSuffix(expr, suffix))
+	if !strings.HasPrefix(raw, "(") || !wrapsWhole(raw) {
+		t.Fatalf("concurrency group condition must be wrapped in one pair of parentheses before %q: %q", suffix, raw)
+	}
+	cond := stripParens(raw)
 	var groupClauses map[string]bool
 	cancelEvents := map[string]bool{}
 	for _, term := range topLevel(cond, "||") {
 		inner := stripParens(term)
 		if parts := topLevel(inner, "&&"); len(parts) > 1 {
+			if len(topLevel(inner, "||")) != 1 {
+				t.Fatalf("the group's && term has a top-level ||: %q", inner)
+			}
 			if groupClauses != nil {
 				t.Fatalf("concurrency group has more than one && term: %q", cond)
 			}
@@ -977,7 +991,7 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	var notChecked []string
 	defer func() {
 		if len(notChecked) > 0 {
-			t.Logf("not checked (no checkout in %s): %s", root, strings.Join(notChecked, ", "))
+			t.Logf("not checked (under %s): %s", root, strings.Join(notChecked, ", "))
 		}
 	}()
 	isKnown := map[string]bool{"lacylights-test": true}
@@ -992,17 +1006,21 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 			continue
 		}
-		if theirs, err := show(dir); err == nil {
-			checked++
-			if string(theirs) != string(ours) {
-				t.Errorf("%s: origin/main copy of %s differs from lacylights-test's origin/main copy", repo, wfFile)
-			}
+		theirs, err := show(dir)
+		if err != nil {
+			// Not one of the known repos, so the workflow may simply not be there yet.
+			notChecked = append(notChecked, repo+" (no copy on origin/main)")
+			continue
+		}
+		checked++
+		if string(theirs) != string(ours) {
+			t.Errorf("%s: origin/main copy of %s differs from lacylights-test's origin/main copy", repo, wfFile)
 		}
 	}
 	for _, repo := range known {
 		dir := filepath.Join(root, repo)
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-			notChecked = append(notChecked, repo)
+			notChecked = append(notChecked, repo+" (not checked out)")
 			continue
 		}
 		// lacylights-test has the workflow on main, so every checked-out sibling must have it too.
