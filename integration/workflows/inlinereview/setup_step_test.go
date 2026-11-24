@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -30,14 +31,20 @@ const (
 type workflow struct {
 	On          map[string]map[string][]string `yaml:"on"`
 	Permissions map[string]string              `yaml:"permissions"`
+	Env         map[string]string              `yaml:"env"`
+	Defaults    map[string]any                 `yaml:"defaults"`
 	Concurrency struct {
 		Group string `yaml:"group"`
 	} `yaml:"concurrency"`
 	Jobs map[string]struct {
 		If          string            `yaml:"if"`
 		Permissions map[string]string `yaml:"permissions"`
+		Env         map[string]string `yaml:"env"`
+		Defaults    map[string]any    `yaml:"defaults"`
+		Container   any               `yaml:"container"`
 		Steps       []struct {
 			Name string            `yaml:"name"`
+			If   string            `yaml:"if"`
 			Uses string            `yaml:"uses"`
 			Run  string            `yaml:"run"`
 			With map[string]any    `yaml:"with"`
@@ -861,18 +868,54 @@ func TestReviewerSandbox(t *testing.T) {
 	if len(wf.Jobs) != 1 {
 		t.Errorf("expected exactly one job, got %d", len(wf.Jobs))
 	}
-	// The steps, in order. A new step (for example one running a repo script before the Claude step)
-	// must be reviewed for the sandbox and added here.
-	wantSteps := []string{"Check for Claude token", "Checkout repository", "Collect PR context", "Run Claude inline review"}
-	var gotSteps []string
-	for _, st := range job.Steps {
-		gotSteps = append(gotSteps, st.Name)
-		if strings.HasPrefix(st.Uses, "anthropics/claude-code-action@") && len(st.Env) != 0 {
-			t.Errorf("the claude-code-action step must not set env:, got %v", st.Env)
-		}
+	// No inherited environment or defaults: the Claude step and CLI inherit workflow- and job-level env
+	// (for example ANTHROPIC_BASE_URL would redirect the reviewer).
+	if len(wf.Env) != 0 || len(wf.Defaults) != 0 || len(job.Env) != 0 || len(job.Defaults) != 0 || job.Container != nil {
+		t.Errorf("no workflow/job env, defaults or container expected; got workflow env=%v defaults=%v, job env=%v defaults=%v container=%v",
+			wf.Env, wf.Defaults, job.Env, job.Defaults, job.Container)
 	}
-	if strings.Join(gotSteps, "|") != strings.Join(wantSteps, "|") {
-		t.Errorf("steps must be exactly %q, got %q", wantSteps, gotSteps)
+	// The steps, in order, with their exact if: and env. A new step (for example one running a repo
+	// script before the Claude step), a changed condition (such as dropping the no-diff skip) or new
+	// env must be reviewed for the sandbox and updated here.
+	present := "steps.token.outputs.present == 'true'"
+	type stepSpec struct {
+		name, ifCond string
+		env          map[string]string
+	}
+	wantSteps := []stepSpec{
+		{"Check for Claude token", "", map[string]string{"CLAUDE_TOKEN": "${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}"}},
+		{"Checkout repository", present, nil},
+		{"Collect PR context", present, map[string]string{
+			"GH_TOKEN": "${{ github.token }}", "REPO": "${{ github.repository }}",
+			"PR":       "${{ github.event.pull_request.number }}",
+			"BASE_REF": "${{ github.event.pull_request.base.ref }}",
+			"HEAD_SHA": "${{ github.event.pull_request.head.sha }}"}},
+		{"Run Claude inline review", present + " && steps.ctx.outputs.diff_ok == 'true'", nil},
+	}
+	if len(job.Steps) != len(wantSteps) {
+		t.Fatalf("expected %d steps, got %d", len(wantSteps), len(job.Steps))
+	}
+	sha := regexp.MustCompile(`@[0-9a-f]{40}$`)
+	for i, want := range wantSteps {
+		st := job.Steps[i]
+		if st.Name != want.name {
+			t.Errorf("step %d must be %q, got %q", i, want.name, st.Name)
+			continue
+		}
+		if strings.Join(strings.Fields(st.If), " ") != want.ifCond {
+			t.Errorf("step %q: if: must be %q, got %q", st.Name, want.ifCond, st.If)
+		}
+		if len(st.Env) != len(want.env) {
+			t.Errorf("step %q: env must be exactly %v, got %v", st.Name, want.env, st.Env)
+		}
+		for k, v := range want.env {
+			if st.Env[k] != v {
+				t.Errorf("step %q: env %s must be %q, got %q", st.Name, k, v, st.Env[k])
+			}
+		}
+		if st.Uses != "" && !sha.MatchString(st.Uses) {
+			t.Errorf("step %q: %q must be pinned to a full commit SHA", st.Name, st.Uses)
+		}
 	}
 	var checkouts, reviews []map[string]any
 	for _, st := range job.Steps {
