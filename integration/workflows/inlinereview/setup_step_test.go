@@ -99,6 +99,20 @@ func setupScript(t *testing.T) string {
 	return ""
 }
 
+// requireTools skips the test when a tool is missing locally, but fails it in CI: GitHub runners have
+// these tools, so a missing one there is a real failure, not a reason to skip silently.
+func requireTools(t *testing.T, tools ...string) {
+	t.Helper()
+	for _, tool := range tools {
+		if _, err := exec.LookPath(tool); err != nil {
+			if os.Getenv("CI") != "" {
+				t.Fatalf("%s is required: %v", tool, err)
+			}
+			t.Skipf("%s is required (install it to run these tests): %v", tool, err)
+		}
+	}
+}
+
 // scenario describes the canned GitHub API state for one run of the setup step.
 type scenario struct {
 	baseRef     string   // the PR's base branch (BASE_REF)
@@ -191,15 +205,7 @@ func runSetup(t *testing.T, sc scenario) result {
 	if _, err := exec.LookPath("gojq"); err != nil && os.Getenv("CI") != "" {
 		t.Fatalf("gojq is required in CI (the fake gh evaluates --jq with it, like real gh): %v", err)
 	}
-	for _, tool := range []string{"bash", "jq"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			// GitHub runners have both, so a missing tool in CI is a real failure, not a skip.
-			if os.Getenv("CI") != "" {
-				t.Fatalf("%s is required: %v", tool, err)
-			}
-			t.Skipf("%s is required (install it to run these tests): %v", tool, err)
-		}
-	}
+	requireTools(t, "bash", "jq")
 	work := t.TempDir()     // stands in for the checkout; the step writes into ./.git/review
 	fixtures := t.TempDir() // fake gh fixtures and call log
 	bin := t.TempDir()      // holds the fake gh, first on PATH
@@ -1576,14 +1582,7 @@ func TestShellSplit(t *testing.T) {
 // The fake gh's refusals are what make assertClean's "refused.log is empty" check meaningful, so test
 // them directly.
 func TestFakeGHRefuses(t *testing.T) {
-	for _, tool := range []string{"bash", "jq"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			if os.Getenv("CI") != "" {
-				t.Fatalf("%s is required: %v", tool, err)
-			}
-			t.Skipf("%s is required: %v", tool, err)
-		}
-	}
+	requireTools(t, "bash", "jq")
 	base := "repos/" + testRepo
 	good := base + "/compare/main..." + reviewSHA
 	cases := []struct {
@@ -1624,9 +1623,7 @@ func TestFakeGHRefuses(t *testing.T) {
 // gh prints a null --jq result as an empty line; the fake must do the same, or the tests would see the
 // text "null" where the runner sees "".
 func TestFakeGHNullIsEmpty(t *testing.T) {
-	if _, err := exec.LookPath("jq"); err != nil {
-		t.Skip("jq is required")
-	}
+	requireTools(t, "bash", "jq")
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "pull.json"), []byte(`{"head":{"sha":null},"title":"x"}`), 0o600); err != nil {
 		t.Fatal(err)
