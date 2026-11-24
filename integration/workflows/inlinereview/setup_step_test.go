@@ -111,6 +111,8 @@ type scenario struct {
 	comments    []map[string]any
 	diffFiles   []string // files the compare diff covers
 	subject     string   // if set, the first commit's subject
+	nounset     bool     // also run with -u, so a misspelled variable fails the step
+	longLine    bool     // the compare diff gets one line longer than 2000 characters
 	body        string   // the PR description
 }
 
@@ -227,6 +229,9 @@ func runSetup(t *testing.T, sc scenario) result {
 	for _, f := range sc.diffFiles {
 		fmt.Fprintf(&diff, "diff --git a/%s b/%s\n+compare diff body\n", f, f)
 	}
+	if sc.longLine {
+		diff.WriteString("+" + strings.Repeat("x", 2500) + "\n")
+	}
 	if err := os.WriteFile(filepath.Join(fixtures, "compare.diff"), []byte(diff.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +244,11 @@ func runSetup(t *testing.T, sc scenario) result {
 	// How GitHub Actions runs a Linux `run:` step that sets no shell: (`bash -e {0}`: no pipefail, and
 	// no --noprofile/--norc, which the minimal environment below makes moot). TestReviewerSandbox
 	// requires the step to set no shell, so this stays accurate.
-	cmd := exec.Command("bash", "-e", scriptPath)
+	flags := "-e"
+	if sc.nounset {
+		flags = "-eu"
+	}
+	cmd := exec.Command("bash", flags, scriptPath)
 	cmd.Dir = work
 	// A minimal environment, so variables the caller happens to export (for example files_failed, or
 	// BASH_ENV, which non-interactive bash reads even with --noprofile --norc) can't change the run.
@@ -453,6 +462,22 @@ func TestSetupStep(t *testing.T) {
 				},
 				notContains: map[string][]string{"log": {"is newer than the reviewed commit"}},
 			},
+		},
+		{
+			// The same normal path under bash -eu: GitHub doesn't use -u, but this catches a misspelled
+			// variable, which would otherwise expand to "" and silently skip a check.
+			name:   "normal path with nounset",
+			modify: func(sc *scenario) { sc.nounset = true },
+			want:   check{contains: map[string][]string{"outputs": {"diff_ok=true"}}},
+		},
+		{
+			// A diff line longer than Read can show is named in a NOTE.
+			name:   "long diff line is noted",
+			modify: func(sc *scenario) { sc.longLine = true },
+			want: check{contains: map[string][]string{
+				"log":  {"::notice::pr.diff has lines longer than 2000 characters"},
+				"meta": {"NOTE: these pr.diff lines are longer than 2000 characters", "(first 50 listed): 5."},
+			}},
 		},
 		{
 			// The compare diff succeeds but covers fewer files than the file list: rebuild it.
@@ -773,7 +798,7 @@ func TestSkipConditionsInSync(t *testing.T) {
 		t.Fatalf("job %q not found in %s", jobName, workflowPath)
 	}
 	const closedSkip = "github.event.action != 'closed'"
-	jobIf := unwrapExpr(job.If)
+	jobIf := stripParens(unwrapExpr(job.If))
 	// A top-level || would make the && clauses below a partial view of the condition (precedence).
 	if parts := topLevel(jobIf, "||"); len(parts) != 1 {
 		t.Fatalf("job if: must be a single && chain at the top level, found a top-level ||: %q", jobIf)
@@ -1219,7 +1244,11 @@ fi
 	}
 	// Every input of the Claude step, not only the prompt: an expression in claude_args could add flags.
 	for k, v := range review {
-		str, _ := v.(string)
+		str, isStr := v.(string)
+		if !isStr {
+			t.Errorf("claude-code-action input %q must be a string, got %T", k, v)
+			continue
+		}
 		switch k {
 		case "prompt":
 			checkExprs(k, str, allowedExpr)
@@ -1352,8 +1381,13 @@ func TestShellSplit(t *testing.T) {
 // The fake gh's refusals are what make assertClean's "refused.log is empty" check meaningful, so test
 // them directly.
 func TestFakeGHRefuses(t *testing.T) {
-	if _, err := exec.LookPath("jq"); err != nil {
-		t.Skip("jq is required")
+	for _, tool := range []string{"bash", "jq"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			if os.Getenv("CI") != "" {
+				t.Fatalf("%s is required: %v", tool, err)
+			}
+			t.Skipf("%s is required: %v", tool, err)
+		}
 	}
 	base := "repos/" + testRepo
 	good := base + "/compare/main..." + reviewSHA
