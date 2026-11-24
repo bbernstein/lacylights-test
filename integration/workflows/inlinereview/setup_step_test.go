@@ -192,15 +192,18 @@ func runSetup(t *testing.T, sc scenario) result {
 	// The same shell options GitHub Actions uses for `run:` steps.
 	cmd := exec.Command("bash", "--noprofile", "--norc", "-eo", "pipefail", scriptPath)
 	cmd.Dir = work
-	cmd.Env = append(os.Environ(),
-		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"GH_TOKEN=fake-token", "REPO="+testRepo, "PR="+testPR,
-		"BASE_REF="+sc.baseRef, "HEAD_SHA="+reviewSHA,
-		"FAKE_GH_DIR="+fixtures,
-		"GITHUB_OUTPUT="+filepath.Join(fixtures, "github_output"),
-		"FAKE_GH_HEADS="+strings.Join(sc.heads, ","),
-		"FAKE_GH_FAIL="+strings.Join(sc.fail, ","),
-	)
+	// A minimal environment, so variables the caller happens to export (for example files_failed, or
+	// BASH_ENV, which non-interactive bash reads even with --noprofile --norc) can't change the run.
+	cmd.Env = []string{
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"HOME=" + work, "TMPDIR=" + os.TempDir(), "LC_ALL=C",
+		"GH_TOKEN=fake-token", "REPO=" + testRepo, "PR=" + testPR,
+		"BASE_REF=" + sc.baseRef, "HEAD_SHA=" + reviewSHA,
+		"FAKE_GH_DIR=" + fixtures,
+		"GITHUB_OUTPUT=" + filepath.Join(fixtures, "github_output"),
+		"FAKE_GH_HEADS=" + strings.Join(sc.heads, ","),
+		"FAKE_GH_FAIL=" + strings.Join(sc.fail, ","),
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("setup step failed: %v\n%s", err, out)
@@ -632,35 +635,52 @@ func TestSkipConditionsInSync(t *testing.T) {
 			t.Errorf("concurrency group clause %q is missing from the job if:; keep them in sync", c)
 		}
 	}
-	for _, ev := range []string{"converted_to_draft", "closed"} {
-		if !cancelEvents["github.event.action == '"+ev+"'"] {
-			t.Errorf("concurrency group should route %s into the review group (terms: %v)", ev, cancelEvents)
+	// Exactly these events join the review group to cancel a running review (the job then skips them).
+	// Any other cancel term would let skipped runs cancel real reviews.
+	wantCancel := map[string]bool{
+		"github.event.action == 'converted_to_draft'": true,
+		"github.event.action == 'closed'":             true,
+	}
+	for ev := range wantCancel {
+		if !cancelEvents[ev] {
+			t.Errorf("concurrency group should route %q into the review group", ev)
+		}
+	}
+	for ev := range cancelEvents {
+		if !wantCancel[ev] {
+			t.Errorf("unexpected cancel term %q in the concurrency group; only converted_to_draft and closed may cancel", ev)
 		}
 	}
 }
 
-// stripParens removes parentheses that wrap the whole expression.
+// stripParens removes parentheses that wrap the whole expression, ignoring parentheses inside
+// '...' string literals.
 func stripParens(s string) string {
 	s = strings.TrimSpace(s)
-	for strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") && len(topLevel(s[1:len(s)-1], ")")) == 1 {
-		depth, wraps := 0, true
-		for i, c := range s {
-			if c == '(' {
-				depth++
-			} else if c == ')' {
-				depth--
-				if depth == 0 && i != len(s)-1 {
-					wraps = false
-					break
-				}
-			}
-		}
-		if !wraps {
-			break
-		}
+	for strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") && wrapsWhole(s) {
 		s = strings.TrimSpace(s[1 : len(s)-1])
 	}
 	return s
+}
+
+// wrapsWhole reports whether the opening parenthesis at s[0] closes at the last character.
+func wrapsWhole(s string) bool {
+	depth, inQuote := 0, false
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '\'':
+			inQuote = !inQuote
+		case inQuote:
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+			if depth == 0 {
+				return i == len(s)-1
+			}
+		}
+	}
+	return false
 }
 
 func TestTopLevelAndStripParens(t *testing.T) {
@@ -681,10 +701,12 @@ func TestTopLevelAndStripParens(t *testing.T) {
 		}
 	}
 	for in, want := range map[string]string{
-		"((a && b))":      "a && b",
-		"(a) && (b)":      "(a) && (b)",
-		"(a || (b && c))": "a || (b && c)",
-		"plain":           "plain",
+		"((a && b))":              "a && b",
+		"(a) && (b)":              "(a) && (b)",
+		"(a || (b && c))":         "a || (b && c)",
+		"plain":                   "plain",
+		"(endsWith(x, ')') && y)": "endsWith(x, ')') && y",
+		"(a == '(') && (b)":       "(a == '(') && (b)",
 	} {
 		if got := stripParens(in); got != want {
 			t.Errorf("stripParens(%q) = %q, want %q", in, got, want)
@@ -692,12 +714,17 @@ func TestTopLevelAndStripParens(t *testing.T) {
 	}
 }
 
-// Every LacyLights repo carries an identical copy of the workflow. When sibling repos are checked out
-// next to this one (the usual local layout), compare each sibling's origin/main copy with
-// lacylights-test's origin/main copy, so a branch that is mid-change doesn't fail locally. Local refs
-// are used as-is (no network), so fetch the repos first for an up-to-date answer. Skipped in CI, where
-// the siblings aren't present.
+// Every LacyLights repo carries an identical copy of the workflow. This local, opt-in check
+// (INLINE_REVIEW_DRIFT_CHECK=1) compares each checked-out sibling's origin/main copy with
+// lacylights-test's origin/main copy, so a branch that is mid-change doesn't fail it. A checked-out
+// sibling without the workflow on origin/main is an error. Local refs are used as-is (no network), so
+// fetch the repos first. CI doesn't run it: the siblings aren't checked out there.
 func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
+	// Opt-in, so routine runs (make test-ci) never fail because of another repo's merge or fetch
+	// state. `make test-workflows` turns it on.
+	if os.Getenv("INLINE_REVIEW_DRIFT_CHECK") != "1" {
+		t.Skip("set INLINE_REVIEW_DRIFT_CHECK=1 (make test-workflows does) to compare sibling repos' copies")
+	}
 	const wfFile = ".github/workflows/claude-inline-review.yml"
 	show := func(dir string) ([]byte, error) {
 		out, err := exec.Command("git", "-C", dir, "show", "origin/main:"+wfFile).Output()
@@ -735,6 +762,6 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		}
 	}
 	if checked == 0 {
-		t.Skip("no sibling repo checkouts with the workflow on origin/main found next to lacylights-test")
+		t.Skip("no sibling repo checkouts found next to lacylights-test")
 	}
 }
