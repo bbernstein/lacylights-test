@@ -43,13 +43,16 @@ done
 # 404, so a workflow change that calls a new endpoint fails the tests instead of getting wrong data.
 # A query string (such as ?per_page=100) is allowed and ignored. Only the compare endpoint accepts a
 # header, and only the diff Accept header.
-# Anchored to the step's own $REPO and $PR, so a call about another repo or PR is refused.
-seg='[^/?]+' q='(\?[^/]*)?'
+# Anchored to the step's own $REPO and $PR, and compare to exactly <encoded BASE_REF>...$HEAD_SHA (three
+# dots), so a call about another repo, PR or range is refused. The variable parts are quoted, so they
+# match literally rather than as regex.
+q='(\?[^/]*)?'
 pr_path="repos/${REPO:?}/pulls/${PR:?}"
-if [[ "$endpoint" =~ ^$pr_path/files$q$ ]]; then key=pull_files
-elif [[ "$endpoint" =~ ^$pr_path/comments$q$ ]]; then key=comments
-elif [[ "$endpoint" =~ ^$pr_path$q$ ]]; then key=pull
-elif [[ "$endpoint" =~ ^repos/$REPO/compare/$seg$q$ ]]; then
+range="$(jq -rn --arg r "${BASE_REF:?}" '$r|@uri')...${HEAD_SHA:?}"
+if [[ "$endpoint" =~ ^"$pr_path"/files$q$ ]]; then key=pull_files
+elif [[ "$endpoint" =~ ^"$pr_path"/comments$q$ ]]; then key=comments
+elif [[ "$endpoint" =~ ^"$pr_path"$q$ ]]; then key=pull
+elif [[ "$endpoint" =~ ^"repos/$REPO/compare/$range"$q$ ]]; then
   case "$accept" in
     "") key=compare ;;
     "Accept: application/vnd.github.diff") key=compare_diff ;;

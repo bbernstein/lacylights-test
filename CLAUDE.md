@@ -109,7 +109,7 @@ lacylights-test/
 **Exception: shared workflows.** `integration/workflows/` tests `.github/workflows/claude-inline-review.yml`, which is
 identical in every LacyLights repo. Its setup-step tests are unit-style, but the workflow belongs to all repos,
 so it's tested once here. A local, opt-in check (`make check-workflow-drift`; CI can't run it) also compares
-every sibling repo's copy on origin/main. The shell has to stay inline in the workflow: a script file could be changed by a PR and
+the origin/main copy of every sibling repo that is checked out next to this one. The shell has to stay inline in the workflow: a script file could be changed by a PR and
 would run before the step that holds the Claude token.
 
 ### GraphQL Client Usage
