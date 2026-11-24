@@ -9,7 +9,7 @@ GO_SERVER_URL ?= http://localhost:4001/graphql
 # Art-Net settings (standard port 6454, localhost for testing)
 ARTNET_LISTEN_PORT ?= 6454
 
-.PHONY: all build clean test test-ci test-all test-workflows test-contracts test-contracts-go \
+.PHONY: all build clean test test-ci test-all test-workflows check-workflow-drift test-contracts test-contracts-go \
         test-dmx test-fade test-effects test-preview test-settings test-undo test-dataexport lint help deps \
         start-go-server stop-go-server wait-for-server test-load run-load-tests \
         e2e e2e-ui e2e-setup e2e-headed
@@ -159,12 +159,15 @@ test-ci:
 		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/dataexport/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/... ./contracts/settings/... ./contracts/undo/... || status=1; \
 	exit $$status
 
-## test-workflows: Test the shared claude-inline-review workflow, plus the local cross-repo copy check (no server)
+## test-workflows: Test the shared claude-inline-review workflow's setup step and sandbox (no server)
 test-workflows:
-	@# Also runs the opt-in check that every sibling repo checked out next to this one has an
-	@# identical copy of the workflow on origin/main (fetch them first). -count=1: that check reads
-	@# git, which go test's cache can't see.
-	INLINE_REVIEW_DRIFT_CHECK=1 $(GO) test $(GOFLAGS) -count=1 ./integration/workflows/...
+	$(GO) test $(GOFLAGS) -count=1 ./integration/workflows/...
+
+## check-workflow-drift: Check every sibling repo has an identical copy of the workflow on origin/main
+## (local only; fetch all repos first; strict: fails if a copy is missing or different)
+check-workflow-drift:
+	@# -count=1: the check reads git, which go test's cache can't see.
+	INLINE_REVIEW_DRIFT_CHECK=1 $(GO) test $(GOFLAGS) -count=1 -run TestWorkflowIdenticalAcrossRepos ./integration/workflows/...
 
 ## test-all: Run all tests including integration tests
 test-all:

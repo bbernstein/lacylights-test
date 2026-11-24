@@ -32,8 +32,9 @@ type workflow struct {
 		Group string `yaml:"group"`
 	} `yaml:"concurrency"`
 	Jobs map[string]struct {
-		If    string `yaml:"if"`
-		Steps []struct {
+		If          string            `yaml:"if"`
+		Permissions map[string]string `yaml:"permissions"`
+		Steps       []struct {
 			Name string         `yaml:"name"`
 			Uses string         `yaml:"uses"`
 			Run  string         `yaml:"run"`
@@ -603,6 +604,11 @@ func TestSkipConditionsInSync(t *testing.T) {
 	if !sawClosed {
 		t.Errorf("job if: should skip closed events with %q", closedSkip)
 	}
+	// converted_to_draft joins the review group to cancel; the job must then skip it, which this
+	// clause does.
+	if draftSkip := "!github.event.pull_request.draft"; !jobClauses[draftSkip] {
+		t.Errorf("job if: should skip drafts with %q (converted_to_draft relies on it)", draftSkip)
+	}
 
 	// group: claude-inline-review-${{ PR }}-${{ (<cancel events> || (<will review>)) && 'review' || github.run_id }}
 	group := strings.Join(strings.Fields(wf.Concurrency.Group), " ")
@@ -725,8 +731,10 @@ func TestTopLevelAndStripParens(t *testing.T) {
 }
 
 // Every LacyLights repo carries an identical copy of the workflow. This local, opt-in check
-// (INLINE_REVIEW_DRIFT_CHECK=1) compares each checked-out sibling's origin/main copy with
-// lacylights-test's origin/main copy, so a branch that is mid-change doesn't fail it. A checked-out
+// (`make check-workflow-drift`, which sets INLINE_REVIEW_DRIFT_CHECK=1) compares each checked-out
+// sibling's origin/main copy with lacylights-test's origin/main copy, so a branch that is mid-change
+// doesn't fail it. Because it compares main branches, it finds drift once it has merged; run it after
+// the change has merged everywhere. A checked-out
 // sibling without the workflow on origin/main is an error. Local refs are used as-is (no network), so
 // fetch the repos first. Once opted in, anything that prevents a real comparison fails. CI doesn't run
 // it: the siblings aren't checked out there.
@@ -734,7 +742,7 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	// Opt-in, so routine runs (make test-ci) never fail because of another repo's merge or fetch
 	// state. `make test-workflows` turns it on.
 	if os.Getenv("INLINE_REVIEW_DRIFT_CHECK") != "1" {
-		t.Skip("set INLINE_REVIEW_DRIFT_CHECK=1 (make test-workflows does) to compare sibling repos' copies")
+		t.Skip("run `make check-workflow-drift` (sets INLINE_REVIEW_DRIFT_CHECK=1) to compare sibling repos' copies")
 	}
 	const wfFile = ".github/workflows/claude-inline-review.yml"
 	show := func(dir string) ([]byte, error) {
@@ -805,15 +813,29 @@ func TestReviewerSandbox(t *testing.T) {
 		t.Errorf("checkout must use the PR head SHA, got %v", checkout["ref"])
 	}
 
+	if got := job.Permissions; len(got) != 4 || got["contents"] != "read" || got["pull-requests"] != "read" ||
+		got["issues"] != "read" || got["id-token"] != "write" {
+		t.Errorf("job permissions must be exactly contents/pull-requests/issues: read, id-token: write; got %v", got)
+	}
+	if review["allowed_bots"] != "dependabot[bot],claude[bot]" {
+		t.Errorf("allowed_bots must be exactly dependabot[bot],claude[bot]; got %v", review["allowed_bots"])
+	}
+
 	args, _ := review["claude_args"].(string)
+	// flag returns the quoted value of a flag that must appear exactly once.
 	flag := func(name string) string {
-		re := name + ` "`
-		i := strings.Index(args, re)
-		if i < 0 {
-			t.Fatalf("claude_args has no %s", name)
+		if n := strings.Count(args, name+" "); n != 1 {
+			t.Fatalf("claude_args must contain %s exactly once, found %d", name, n)
 		}
-		rest := args[i+len(re):]
-		return rest[:strings.Index(rest, `"`)]
+		rest := args[strings.Index(args, name+" ")+len(name)+1:]
+		if !strings.HasPrefix(rest, `"`) {
+			t.Fatalf("%s value must be quoted", name)
+		}
+		end := strings.Index(rest[1:], `"`)
+		if end < 0 {
+			t.Fatalf("%s value has no closing quote", name)
+		}
+		return rest[1 : 1+end]
 	}
 	set := func(list string) map[string]bool {
 		m := map[string]bool{}
@@ -822,8 +844,8 @@ func TestReviewerSandbox(t *testing.T) {
 		}
 		return m
 	}
-	if !strings.Contains(args, "--permission-mode default") {
-		t.Errorf("claude_args must set --permission-mode default (otherwise the mode depends on allowed_bots)")
+	if n := strings.Count(args, "--permission-mode"); n != 1 || !strings.Contains(args, "--permission-mode default") {
+		t.Errorf("claude_args must set --permission-mode default exactly once (found %d --permission-mode)", n)
 	}
 	wantAllowed := set("Read(./**),Glob(./**),Grep(./**),mcp__github_inline_comment__create_inline_comment")
 	gotAllowed := set(flag("--allowed-tools"))
@@ -835,6 +857,11 @@ func TestReviewerSandbox(t *testing.T) {
 	for tool := range wantAllowed {
 		if !gotAllowed[tool] {
 			t.Errorf("--allowed-tools is missing %q", tool)
+		}
+	}
+	for _, alias := range []string{"--allowedTools", "--disallowedTools", "--dangerously-skip-permissions"} {
+		if strings.Contains(args, alias) {
+			t.Errorf("claude_args must not use %s", alias)
 		}
 	}
 	denied := set(flag("--disallowed-tools"))

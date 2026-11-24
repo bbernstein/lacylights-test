@@ -12,7 +12,7 @@ LacyLights Test is the **central integration testing hub** for the entire LacyLi
 - Ensures DMX output correctness
 - Tests performance under load
 
-**This is NOT a unit test repository.** Unit tests live in each component's own repo.
+**This is NOT a unit test repository.** Unit tests live in each component's own repo. (One exception, for the workflow shared by every repo: see "Exception: shared workflows" below.)
 
 ## Development Commands
 
@@ -27,6 +27,7 @@ make test-settings       # Run settings contract tests
 make test-dataexport     # Run CSV/XLSX data export contract tests
 make test-integration    # Run integration tests
 make test-workflows      # Test the shared claude-inline-review workflow (no server)
+make check-workflow-drift # Local: every sibling repo's copy of it is identical (fetch first)
 make test-distribution   # Run S3 distribution tests
 ```
 
@@ -107,8 +108,8 @@ lacylights-test/
 
 **Exception: shared workflows.** `integration/workflows/` tests `.github/workflows/claude-inline-review.yml`, which is
 identical in every LacyLights repo. Its setup-step tests are unit-style, but the workflow belongs to all repos,
-so it's tested once here. A local, opt-in check (`make test-workflows`; CI can't run it) also compares every
-sibling repo's copy. The shell has to stay inline in the workflow: a script file could be changed by a PR and
+so it's tested once here. A local, opt-in check (`make check-workflow-drift`; CI can't run it) also compares
+every sibling repo's copy on origin/main. The shell has to stay inline in the workflow: a script file could be changed by a PR and
 would run before the step that holds the Claude token.
 
 ### GraphQL Client Usage
