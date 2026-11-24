@@ -112,7 +112,8 @@ if [ -n "$filter" ]; then
   # gojq, so use gojq when it is installed. With plain jq, a jq-only builtin could pass here but fail on
   # the runner.
   if command -v gojq >/dev/null 2>&1; then jqbin=gojq; else jqbin=jq; fi
-  "$jqbin" -r -c "$filter" <<< "$body"
+  # gh prints a null result as an empty line, not the text "null".
+  "$jqbin" -r -c "($filter) | if . == null then \"\" else . end" <<< "$body"
 else
   printf '%s\n' "$body"
 fi

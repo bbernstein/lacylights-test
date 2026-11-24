@@ -557,6 +557,16 @@ func TestSetupStep(t *testing.T) {
 			},
 		},
 		{
+			// gh succeeds but returns something that isn't a SHA: only head_now's 40-hex check rejects it
+			// (real gh prints a null as "", which the empty check already covers).
+			name:   "head lookup returns a non-SHA",
+			modify: func(sc *scenario) { sc.heads = []string{"not-a-sha"} },
+			want: check{
+				contains:    map[string][]string{"log": {"::warning::Could not read the PR head"}},
+				notContains: map[string][]string{"log": {"is newer than the reviewed commit"}},
+			},
+		},
+		{
 			// gh succeeds but returns no usable head SHA: treated as a failed lookup, not a moved head.
 			name:   "head lookup returns null",
 			modify: func(sc *scenario) { sc.heads = []string{"null"} },
@@ -1382,6 +1392,28 @@ fi
 	if review["allowed_bots"] != "dependabot[bot],claude[bot]" {
 		t.Errorf("allowed_bots must be exactly dependabot[bot],claude[bot]; got %v", review["allowed_bots"])
 	}
+	// The bots the job lets through must be exactly the ones claude-code-action accepts: a bot in the if:
+	// but not in allowed_bots makes the action throw (a red check), which the if: exists to prevent.
+	ifBots := map[string]bool{}
+	for _, m := range regexp.MustCompile(`github\.actor == '([^']+\[bot\])'`).FindAllStringSubmatch(job.If, -1) {
+		ifBots[m[1]] = true
+	}
+	allowedBots := map[string]bool{}
+	if ab, ok := review["allowed_bots"].(string); ok {
+		for _, b := range strings.Split(ab, ",") {
+			allowedBots[strings.TrimSpace(b)] = true
+		}
+	}
+	for b := range ifBots {
+		if !allowedBots[b] {
+			t.Errorf("job if: lets %s through, but allowed_bots doesn't list it", b)
+		}
+	}
+	for b := range allowedBots {
+		if !ifBots[b] {
+			t.Errorf("allowed_bots lists %s, but the job if: doesn't let it through", b)
+		}
+	}
 
 	// The prompt may interpolate only values the PR author can't choose; everything else (title, body,
 	// branch names) reaches the reviewer as fenced data in .git/review.
@@ -1447,6 +1479,10 @@ fi
 		if _, ok := got[name]; !ok {
 			t.Errorf("claude_args is missing %s", name)
 		}
+	}
+	// Pinned together with timeout-minutes (see above).
+	if got["--max-turns"] != "150" {
+		t.Errorf("--max-turns must be 150 (it is sized together with timeout-minutes 45); got %q", got["--max-turns"])
 	}
 	if got["--permission-mode"] != "default" {
 		t.Errorf("--permission-mode must be default (otherwise the mode depends on allowed_bots); got %q", got["--permission-mode"])
@@ -1582,5 +1618,27 @@ func TestFakeGHRefuses(t *testing.T) {
 				t.Errorf("fake gh refused %q without recording it in refused.log", tc.args)
 			}
 		})
+	}
+}
+
+// gh prints a null --jq result as an empty line; the fake must do the same, or the tests would see the
+// text "null" where the runner sees "".
+func TestFakeGHNullIsEmpty(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skip("jq is required")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pull.json"), []byte(`{"head":{"sha":null},"title":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", "fakegh.sh", "api", "repos/"+testRepo+"/pulls/"+testPR, "--jq", ".head.sha")
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "FAKE_GH_DIR=" + dir, "REPO=" + testRepo, "PR=" + testPR,
+		"BASE_REF=main", "HEAD_SHA=" + reviewSHA}
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("fake gh failed: %v", err)
+	}
+	if string(out) != "\n" {
+		t.Errorf("a null --jq result must print an empty line, got %q", out)
 	}
 }
