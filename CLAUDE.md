@@ -205,7 +205,7 @@ Tests can be run against specific branches from multiple repos:
 
 **Avoid:**
 - Writing tests without reading the code being tested
-- Testing implementation details (internal state, private functions)
+- Testing implementation details (internal state, private functions), except the shared-workflow tests described under "Exception: shared workflows"
 - Making tests depend on each other
 - Hardcoded values without explanation
 - Skipping error case testing

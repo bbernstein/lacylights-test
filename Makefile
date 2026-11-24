@@ -163,9 +163,9 @@ test-ci:
 test-workflows:
 	$(GO) test $(GOFLAGS) -count=1 ./integration/workflows/...
 
-## check-workflow-drift: Check that each sibling repo checked out next to this one has an identical copy of
-## the workflow on origin/main (local only; fetch all repos first). Fails if a checked-out repo's copy is
-## missing or different; repos that aren't checked out are listed as not checked.
+## check-workflow-drift: Local, strict check that sibling repos have an identical claude-inline-review.yml
+# Compares each checked-out sibling's origin/main copy with this repo's (fetch all repos first). Fails if a
+# checked-out repo's copy is missing or different; repos that aren't checked out are listed as not checked.
 check-workflow-drift:
 	@# -count=1: the check reads git, which go test's cache can't see.
 	INLINE_REVIEW_DRIFT_CHECK=1 $(GO) test $(GOFLAGS) -count=1 -run TestWorkflowIdenticalAcrossRepos ./integration/workflows/...
