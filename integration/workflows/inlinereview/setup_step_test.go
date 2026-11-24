@@ -324,7 +324,8 @@ func assertClean(t *testing.T, r result) {
 	mustNotContain(t, "log", r.log, "integer expression expected", "integer expected", "command not found", "jq: error", "syntax error",
 		"No such file or directory", "bad substitution", "ambiguous redirect", "unbound variable", "fake gh:")
 	// The author's text is fenced exactly once, unless the title fetch failed.
-	if !strings.Contains(r.meta, "(could not fetch title and description)") {
+	// Decided from the step's log, not pr-meta.md, whose fenced part is author-controlled text.
+	if !strings.Contains(r.log, "::warning::Could not fetch title and description") {
 		if n := strings.Count(strings.ToLower(r.meta), "</untrusted-pr-text>"); n != 1 {
 			t.Errorf("pr-meta.md must hold exactly one </untrusted-pr-text> (the workflow's own), got %d", n)
 		}
@@ -1081,14 +1082,16 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		if isKnown[repo] {
 			continue
 		}
-		// A worktree has a .git file (not a directory); its repo's origin/main is checked via the repo.
-		if fi, err := os.Stat(filepath.Join(dir, ".git")); err != nil || !fi.IsDir() {
+		// A checkout (.git directory) or a worktree (.git file) both work with git show.
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+			notChecked = append(notChecked, repo+" (not a git checkout)")
 			continue
 		}
 		theirs, err := show(dir)
 		if err != nil {
-			// Not one of the known repos, so the workflow may simply not be there yet.
-			notChecked = append(notChecked, repo+" (no copy on origin/main)")
+			// Not one of the known repos, so the workflow may simply not be there yet; keep the reason
+			// so "absent" and "unreadable" look different.
+			notChecked = append(notChecked, fmt.Sprintf("%s (no readable copy on origin/main: %v)", repo, err))
 			continue
 		}
 		checked++
@@ -1270,6 +1273,11 @@ fi
 	for k := range review {
 		if !wantKeys[k] {
 			t.Errorf("unexpected claude-code-action input %q; update the sandbox review if it is intended", k)
+		}
+	}
+	for k := range wantKeys {
+		if _, ok := review[k]; !ok {
+			t.Errorf("claude-code-action input %q is missing", k)
 		}
 	}
 	if review["allowed_bots"] != "dependabot[bot],claude[bot]" {
