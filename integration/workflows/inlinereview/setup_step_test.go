@@ -275,7 +275,9 @@ func runSetup(t *testing.T, sc scenario) result {
 		}
 		return string(b)
 	}
-	// Nothing may be left in TMPDIR either: on the runner it persists into the Claude step.
+	// Nothing may be left in TMPDIR either: on the runner it persists into the Claude step. (GNU mktemp,
+	// as on the Linux runners, honours TMPDIR; macOS's mktemp does not, so locally this only catches
+	// tools that do.)
 	if left, _ := os.ReadDir(tmp); len(left) != 0 {
 		t.Errorf("the step left %d entries in TMPDIR (first: %s)", len(left), left[0].Name())
 	}
