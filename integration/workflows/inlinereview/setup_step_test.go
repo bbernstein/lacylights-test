@@ -1134,16 +1134,16 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		}
 		return c
 	}
+	// commonDir is only called on a directory that has a .git, since a missing one would fail the test.
+	hasGit := func(dir string) bool { _, err := os.Stat(filepath.Join(dir, ".git")); return err == nil }
 	seen := map[string]bool{}
 	viaWorktree := map[string]bool{} // known repos compared through a worktree
-	if c := commonDir("."); c != "" {
-		seen[c] = true
-	}
+	seen[commonDir(".")] = true
 	isKnown := map[string]bool{"lacylights-test": true}
 	for _, k := range known {
 		isKnown[k] = true
-		if c := commonDir(filepath.Join(root, k)); c != "" {
-			seen[c] = true
+		if hasGit(filepath.Join(root, k)) {
+			seen[commonDir(filepath.Join(root, k))] = true
 		}
 	}
 	for _, dir := range extra {
@@ -1157,12 +1157,11 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 			notChecked = append(notChecked, repo+" (not a git checkout)")
 			continue
 		}
-		if c := commonDir(dir); c != "" {
-			if seen[c] {
-				continue // a worktree of lacylights-test or of a repo already covered
-			}
-			seen[c] = true
+		c := commonDir(dir) // .git exists (checked above)
+		if seen[c] {
+			continue // a worktree of lacylights-test or of a repo already covered
 		}
+		seen[c] = true
 		// A worktree of a known repo whose main checkout isn't here gets the known-repo (strict) rules,
 		// identified by its origin URL.
 		strict, knownName := false, ""
