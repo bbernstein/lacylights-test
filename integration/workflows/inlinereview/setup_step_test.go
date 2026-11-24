@@ -1564,6 +1564,8 @@ func TestFakeGHRefuses(t *testing.T) {
 		{"second header", []string{"api", good, "-H", "Accept: application/vnd.github.diff", "-H", "X-Other: 1"}},
 		{"second endpoint", []string{"api", good, base + "/pulls/1"}},
 		{"jq without filter", []string{"api", good, "--jq"}},
+		{"paginate on the total", []string{"api", "--paginate", good + "?per_page=1", "--jq", ".total_commits"}},
+		{"paginate on pulls/N", []string{"api", "--paginate", base + "/pulls/" + testPR}},
 		{"not api", []string{"pr", "view"}},
 	}
 	for _, tc := range cases {

@@ -29,10 +29,10 @@ refuse() { echo "$*" >> "$dir/refused.log"; echo "fake gh: $*" >&2; exit 2; }
 [ "${1:-}" = api ] || refuse "only 'gh api' is supported: $*"
 shift
 
-endpoint="" filter="" accept=""
+endpoint="" filter="" accept="" paginate=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --paginate) shift ;;
+    --paginate) paginate=1; shift ;;
     --jq) [ $# -ge 2 ] || refuse "--jq without a filter"; filter=$2; shift 2 ;;
     -H) [ $# -ge 2 ] || refuse "-H without a header"
         [ -z "$accept" ] || refuse "more than one -H header: $accept / $2"; accept=$2; shift 2 ;;
@@ -68,6 +68,12 @@ else
   echo "unknown endpoint $endpoint" >> "$dir/refused.log"
   echo '{"message":"Not Found","status":"404"}'; exit 1
 fi
+# Real gh follows Link headers with --paginate and prints one result per page, so it only belongs on the
+# list calls; elsewhere (for example the ?per_page=1 total) it would change the output.
+case "$key" in
+  pull_files|comments|compare) ;;
+  *) [ -z "$paginate" ] || refuse "--paginate on $key ($endpoint)" ;;
+esac
 if [ -n "$accept" ] && [ "$key" != compare_diff ]; then
   refuse "unexpected header $accept for $endpoint"
 fi
