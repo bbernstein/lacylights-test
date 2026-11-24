@@ -1073,14 +1073,36 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 			t.Logf("not checked (under %s): %s", root, strings.Join(notChecked, ", "))
 		}
 	}()
+	// Worktrees share their repo's git directory. Skip any checkout whose common git directory is
+	// lacylights-test's own or a known repo's, so a worktree is never counted as another sibling.
+	commonDir := func(dir string) string {
+		out, err := exec.Command("git", "-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	}
+	seen := map[string]bool{}
+	if c := commonDir("."); c != "" {
+		seen[c] = true
+	}
 	isKnown := map[string]bool{"lacylights-test": true}
 	for _, k := range known {
 		isKnown[k] = true
+		if c := commonDir(filepath.Join(root, k)); c != "" {
+			seen[c] = true
+		}
 	}
 	for _, dir := range extra {
 		repo := filepath.Base(dir)
 		if isKnown[repo] {
 			continue
+		}
+		if c := commonDir(dir); c != "" {
+			if seen[c] {
+				continue // a worktree of lacylights-test or of a repo already covered
+			}
+			seen[c] = true
 		}
 		// A checkout (.git directory) or a worktree (.git file) both work with git show.
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
