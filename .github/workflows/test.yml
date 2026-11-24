@@ -63,8 +63,10 @@ jobs:
             lacylights-go/go.sum
 
       # The shared-workflow tests need no server, so run them before the server build and start can
-      # fail. make test-ci runs them again alongside the contract tests.
+      # fail. continue-on-error keeps a failure here from skipping the contract tests; make test-ci runs
+      # both suites again and fails the job if either fails, so neither can hide the other.
       - name: Shared workflow tests (no server)
+        continue-on-error: true
         run: make test-workflows
 
       - name: Build lacylights-go server

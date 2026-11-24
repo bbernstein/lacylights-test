@@ -362,7 +362,8 @@ type check struct {
 	metaPrefix  string // pr-meta.md must start with this
 }
 
-func (r result) output(name string) string {
+func (r result) output(t *testing.T, name string) string {
+	t.Helper()
 	switch name {
 	case "log":
 		return r.log
@@ -377,7 +378,8 @@ func (r result) output(name string) string {
 	case "outputs":
 		return r.outputs
 	}
-	panic("unknown output " + name)
+	t.Fatalf("unknown output name %q in a test case", name)
+	return ""
 }
 
 // longLineList is the comma-separated list of n consecutive line numbers starting at first.
@@ -528,6 +530,27 @@ func TestSetupStep(t *testing.T) {
 			},
 		},
 		{
+			// Compare path: the compare file list fails while the commit list works.
+			name:   "compare file list fails alone",
+			modify: func(sc *scenario) { sc.heads = []string{newerSHA}; sc.fail = []string{"compare_files"} },
+			want: check{
+				contains: map[string][]string{
+					"log":  {"::warning::Could not fetch the changed-file list."},
+					"meta": {"(could not fetch the file list)", "- 0000001 \"commit 1\""},
+				},
+				notContains: map[string][]string{"meta": {"the most it returns here"}},
+			},
+		},
+		{
+			// Compare path: the commit list fails while the compare file list works.
+			name:   "compare path, commit list fails alone",
+			modify: func(sc *scenario) { sc.heads = []string{newerSHA}; sc.fail = []string{"compare"} },
+			want: check{
+				contains:    map[string][]string{"log": {"::warning::Could not fetch the commit list"}, "meta": {"- \"compare-only.go\""}},
+				notContains: map[string][]string{"meta": {"commit list above is incomplete"}},
+			},
+		},
+		{
 			// gh succeeds but returns no usable head SHA: treated as a failed lookup, not a moved head.
 			name:   "head lookup returns null",
 			modify: func(sc *scenario) { sc.heads = []string{"null"} },
@@ -674,7 +697,7 @@ func TestSetupStep(t *testing.T) {
 			// Neither the diff nor any file list is available. A failed fetch must not be
 			// misreported as GitHub truncating the lists.
 			name:   "no diff and no file list",
-			modify: func(sc *scenario) { sc.fail = []string{"compare_diff", "pull_files", "compare"} },
+			modify: func(sc *scenario) { sc.fail = []string{"compare_diff", "pull_files", "compare", "compare_files"} },
 			want: check{
 				contains: map[string][]string{
 					"log": {"::warning::Could not fetch the changed-file list.",
@@ -775,10 +798,10 @@ func TestSetupStep(t *testing.T) {
 			r := runSetup(t, sc)
 			assertClean(t, r)
 			for name, wants := range tc.want.contains {
-				mustContain(t, name, r.output(name), wants...)
+				mustContain(t, name, r.output(t, name), wants...)
 			}
 			for name, unwanted := range tc.want.notContains {
-				mustNotContain(t, name, r.output(name), unwanted...)
+				mustNotContain(t, name, r.output(t, name), unwanted...)
 			}
 			if tc.want.metaPrefix != "" && !strings.HasPrefix(r.meta, tc.want.metaPrefix) {
 				t.Errorf("pr-meta.md should start with %q, got:\n%s", tc.want.metaPrefix, r.meta)
@@ -1072,8 +1095,17 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		"lacylights-terraform", "lacylights-mac"}
 	// Any other lacylights-* checkout that has the workflow on origin/main is compared too.
 	// The docs repo checkout first, so it is reported under its own name rather than a worktree's.
-	extra, _ := filepath.Glob(filepath.Join(root, "lacylights-*"))
-	extra = append([]string{filepath.Join(root, "lacylights")}, extra...)
+	// os.ReadDir rather than Glob, so a root containing [, * or ? can't change the match.
+	extra := []string{filepath.Join(root, "lacylights")}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("reading %s: %v", root, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "lacylights-") {
+			extra = append(extra, filepath.Join(root, e.Name()))
+		}
+	}
 	checked := 0
 	var notChecked []string
 	defer func() {
@@ -1112,6 +1144,13 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 			}
 			seen[c] = true
 		}
+		// A worktree of a known repo whose main checkout isn't here gets the known-repo (strict) rules,
+		// identified by its origin URL.
+		strict := false
+		if out, err := exec.Command("git", "-C", dir, "remote", "get-url", "origin").Output(); err == nil {
+			name := strings.TrimSuffix(filepath.Base(strings.TrimSpace(string(out))), ".git")
+			strict = isKnown[name] && name != "lacylights-test"
+		}
 		// A checkout (.git directory) or a worktree (.git file) both work with git show.
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 			notChecked = append(notChecked, repo+" (not a git checkout)")
@@ -1119,6 +1158,11 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		}
 		theirs, err := show(dir)
 		if err != nil {
+			if strict {
+				checked++
+				t.Errorf("%s (a known repo): can't read origin/main:%s (missing from that repo, or fetch it): %v", repo, wfFile, err)
+				continue
+			}
 			// Not one of the known repos, so the workflow may simply not be there yet; keep the reason
 			// so "absent" and "unreadable" look different.
 			notChecked = append(notChecked, fmt.Sprintf("%s (no readable copy on origin/main: %v)", repo, err))
