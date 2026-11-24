@@ -37,11 +37,13 @@ done
 
 # Match endpoints exactly (in a case pattern, * also matches "/", so use regexes). Anything else is a
 # 404, so a workflow change that calls a new endpoint fails the tests instead of getting wrong data.
-seg='[^/]+'
-if [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+/files$ ]]; then key=pull_files
-elif [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+/comments$ ]]; then key=comments
-elif [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+$ ]]; then key=pull
-elif [[ "$endpoint" =~ ^repos/$seg/$seg/compare/$seg$ ]]; then
+# A query string (such as ?per_page=100) is allowed and ignored. Only the compare endpoint accepts a
+# header, and only the diff Accept header.
+seg='[^/?]+' q='(\?[^/]*)?'
+if [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+/files$q$ ]]; then key=pull_files
+elif [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+/comments$q$ ]]; then key=comments
+elif [[ "$endpoint" =~ ^repos/$seg/$seg/pulls/[0-9]+$q$ ]]; then key=pull
+elif [[ "$endpoint" =~ ^repos/$seg/$seg/compare/$seg$q$ ]]; then
   case "$accept" in
     "") key=compare ;;
     "Accept: application/vnd.github.diff") key=compare_diff ;;
@@ -49,6 +51,9 @@ elif [[ "$endpoint" =~ ^repos/$seg/$seg/compare/$seg$ ]]; then
   esac
 else
   echo '{"message":"Not Found","status":"404"}'; exit 1
+fi
+if [ -n "$accept" ] && [ "$key" != compare_diff ]; then
+  echo "fake gh: unexpected header $accept for $endpoint" >&2; exit 2
 fi
 
 case ",${FAKE_GH_FAIL:-}," in
