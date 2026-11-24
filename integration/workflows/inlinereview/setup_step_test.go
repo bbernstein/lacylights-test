@@ -1143,11 +1143,20 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	// lacylights-test's own or a known repo's, so a worktree is never counted as another sibling.
 	// Needs git 2.31+ (--path-format). Anything but one absolute path fails the opted-in check, since a
 	// wrong answer would break the de-duplication silently.
-	commonDir := func(dir string) string {
+	gitCommonDir := func(dir string) (string, error) {
 		out, err := exec.Command("git", "-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
 		c := strings.TrimSpace(string(out))
 		if err != nil || strings.Contains(c, "\n") || !filepath.IsAbs(c) {
-			t.Fatalf("git rev-parse --git-common-dir in %s gave %q (%v); git 2.31+ and a readable repo are required", dir, c, err)
+			return "", fmt.Errorf("git rev-parse --git-common-dir in %s gave %q (%v); git 2.31+ and a readable repo are required", dir, c, err)
+		}
+		return c, nil
+	}
+	// For lacylights-test and the known repos a failure is fatal (a wrong answer would break the
+	// de-duplication silently). Other checkouts are listed as not checked instead.
+	commonDir := func(dir string) string {
+		c, err := gitCommonDir(dir)
+		if err != nil {
+			t.Fatal(err)
 		}
 		return c
 	}
@@ -1178,7 +1187,12 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 			notChecked = append(notChecked, repo+" (not a git checkout)")
 			continue
 		}
-		c := commonDir(dir) // .git exists (checked above)
+		c, err := gitCommonDir(dir) // .git exists (checked above)
+		if err != nil {
+			// e.g. a leftover worktree whose git directory was pruned
+			notChecked = append(notChecked, fmt.Sprintf("%s (broken git checkout: %v)", repo, err))
+			continue
+		}
 		if seen[c] {
 			continue // a worktree of lacylights-test or of a repo already covered
 		}
