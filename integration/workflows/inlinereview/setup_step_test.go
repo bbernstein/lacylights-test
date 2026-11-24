@@ -1102,7 +1102,11 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		t.Fatalf("reading %s: %v", root, err)
 	}
 	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), "lacylights-") {
+		if !strings.HasPrefix(e.Name(), "lacylights-") {
+			continue
+		}
+		// os.Stat follows symlinks, so a symlinked checkout counts as a directory.
+		if fi, err := os.Stat(filepath.Join(root, e.Name())); err == nil && fi.IsDir() {
 			extra = append(extra, filepath.Join(root, e.Name()))
 		}
 	}
@@ -1123,6 +1127,7 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		return strings.TrimSpace(string(out))
 	}
 	seen := map[string]bool{}
+	viaWorktree := map[string]bool{} // known repos compared through a worktree
 	if c := commonDir("."); c != "" {
 		seen[c] = true
 	}
@@ -1138,6 +1143,12 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		if isKnown[repo] {
 			continue
 		}
+		// A checkout (.git directory) or a worktree (.git file) both work with git show. Checked before
+		// the common-dir de-duplication, so plain folders inside an enclosing repo aren't merged into it.
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+			notChecked = append(notChecked, repo+" (not a git checkout)")
+			continue
+		}
 		if c := commonDir(dir); c != "" {
 			if seen[c] {
 				continue // a worktree of lacylights-test or of a repo already covered
@@ -1146,15 +1157,13 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		}
 		// A worktree of a known repo whose main checkout isn't here gets the known-repo (strict) rules,
 		// identified by its origin URL.
-		strict := false
+		strict, knownName := false, ""
 		if out, err := exec.Command("git", "-C", dir, "remote", "get-url", "origin").Output(); err == nil {
-			name := strings.TrimSuffix(filepath.Base(strings.TrimSpace(string(out))), ".git")
-			strict = isKnown[name] && name != "lacylights-test"
+			knownName = strings.TrimSuffix(filepath.Base(strings.TrimSpace(string(out))), ".git")
+			strict = isKnown[knownName] && knownName != "lacylights-test"
 		}
-		// A checkout (.git directory) or a worktree (.git file) both work with git show.
-		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-			notChecked = append(notChecked, repo+" (not a git checkout)")
-			continue
+		if strict {
+			viaWorktree[knownName] = true
 		}
 		theirs, err := show(dir)
 		if err != nil {
@@ -1176,7 +1185,9 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 	for _, repo := range known {
 		dir := filepath.Join(root, repo)
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
-			notChecked = append(notChecked, repo+" (not checked out)")
+			if !viaWorktree[repo] { // already compared through one of its worktrees
+				notChecked = append(notChecked, repo+" (not checked out)")
+			}
 			continue
 		}
 		// lacylights-test has the workflow on main, so every checked-out sibling must have it too.
