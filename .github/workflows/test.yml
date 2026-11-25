@@ -62,6 +62,22 @@ jobs:
             go.sum
             lacylights-go/go.sum
 
+      # Real `gh api --jq` evaluates filters with gojq; the fake gh uses gojq when it's on PATH.
+      # continue-on-error: an install failure (for example a module-proxy hiccup) must not skip the contract
+      # tests. The workflow tests require gojq in CI, so they still fail, and make test-ci fails the job.
+      - name: Install gojq
+        continue-on-error: true
+        run: |
+          go install github.com/itchyny/gojq/cmd/gojq@v0.12.19
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # The shared-workflow tests need no server, so run them before the server build and start can
+      # fail. continue-on-error keeps a failure here from skipping the contract tests; make test-ci runs
+      # both suites again and fails the job if either fails, so neither can hide the other.
+      - name: Shared workflow tests (no server)
+        continue-on-error: true
+        run: make test-workflows
+
       - name: Build lacylights-go server
         working-directory: lacylights-go
         run: |

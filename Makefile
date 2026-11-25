@@ -9,7 +9,7 @@ GO_SERVER_URL ?= http://localhost:4001/graphql
 # Art-Net settings (standard port 6454, localhost for testing)
 ARTNET_LISTEN_PORT ?= 6454
 
-.PHONY: all build clean test test-ci test-all test-contracts test-contracts-go \
+.PHONY: all build clean test test-ci test-all test-workflows check-workflow-drift test-contracts test-contracts-go \
         test-dmx test-fade test-effects test-preview test-settings test-undo test-dataexport lint help deps \
         start-go-server stop-go-server wait-for-server test-load run-load-tests \
         e2e e2e-ui e2e-setup e2e-headed
@@ -151,8 +151,25 @@ test:
 ## This skips fade/DMX tests that require Art-Net packet capture
 test-ci:
 	@echo "Running CI-safe tests (no Art-Net required)..."
+	@# Both suites always run, and the target fails if either does, so neither can hide the other.
+	@# The workflow tests need no server.
+	status=0; \
+	$(GO) test $(GOFLAGS) -count=1 ./integration/workflows/... || status=1; \
 	GRAPHQL_ENDPOINT=$(GO_SERVER_URL) SKIP_FADE_TESTS=1 \
-		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/dataexport/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/... ./contracts/settings/... ./contracts/undo/...
+		$(GO) test $(GOFLAGS) -p 1 ./contracts/api/... ./contracts/crud/... ./contracts/dataexport/... ./contracts/importexport/... ./contracts/ofl/... ./contracts/playback/... ./contracts/preview/... ./contracts/settings/... ./contracts/undo/... || status=1; \
+	exit $$status
+
+## test-workflows: Test the shared claude-inline-review workflow's setup step and sandbox (no server)
+test-workflows:
+	$(GO) test $(GOFLAGS) -count=1 ./integration/workflows/...
+
+## check-workflow-drift: Local, strict check that sibling repos have an identical claude-inline-review.yml
+# Compares origin/main copies with this repo's (fetch all repos first). The known repos (go, fe, mcp, rpi,
+# terraform, mac) must have an identical copy if checked out. Other lacylights checkouts, including the docs
+# repo, are compared only if they have a copy. Repos that aren't checked out are listed as not checked.
+check-workflow-drift:
+	@# -count=1: the check reads git, which go test's cache can't see.
+	INLINE_REVIEW_DRIFT_CHECK=1 $(GO) test $(GOFLAGS) -count=1 -run TestWorkflowIdenticalAcrossRepos ./integration/workflows/...
 
 ## test-all: Run all tests including integration tests
 test-all:

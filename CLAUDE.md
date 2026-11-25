@@ -12,7 +12,7 @@ LacyLights Test is the **central integration testing hub** for the entire LacyLi
 - Ensures DMX output correctness
 - Tests performance under load
 
-**This is NOT a unit test repository.** Unit tests live in each component's own repo.
+**This is NOT a unit test repository.** Unit tests live in each component's own repo. (One exception, for the workflow shared by every repo: see "Exception: shared workflows" below.)
 
 ## Development Commands
 
@@ -26,6 +26,8 @@ make test-preview        # Run preview mode tests
 make test-settings       # Run settings contract tests
 make test-dataexport     # Run CSV/XLSX data export contract tests
 make test-integration    # Run integration tests
+make test-workflows      # Test the shared claude-inline-review workflow (no server)
+make check-workflow-drift # Local: known checked-out repos' copies match (fetch first)
 make test-distribution   # Run S3 distribution tests
 ```
 
@@ -65,6 +67,7 @@ lacylights-test/
 │   ├── preview/        # Preview session tests
 │   └── settings/       # System settings tests
 ├── integration/         # Cross-repo integration tests (future)
+│   └── workflows/      # Shared GitHub workflow tests (claude-inline-review setup step)
 ├── e2e/                # End-to-end tests (future)
 ├── stress/             # Performance tests (future)
 ├── pkg/                # Shared test utilities
@@ -102,6 +105,13 @@ lacylights-test/
 **Question:** "Does this test cross repository boundaries?"
 - **YES** → Belongs here (integration, contract, E2E)
 - **NO** → Belongs in the component's own repo (unit test)
+
+**Exception: shared workflows.** `integration/workflows/` tests `.github/workflows/claude-inline-review.yml`, which is
+identical in every LacyLights repo. Its setup-step tests are unit-style, but the workflow belongs to all repos,
+so it's tested once here. A local, opt-in check (`make check-workflow-drift`; CI can't run it) also compares
+origin/main copies: each known repo that is checked out next to this one must have an identical copy, and
+other lacylights checkouts are compared if they have one. The shell has to stay inline in the workflow: a script file could be changed by a PR and
+would run before the step that holds the Claude token.
 
 ### GraphQL Client Usage
 ```go
@@ -196,7 +206,7 @@ Tests can be run against specific branches from multiple repos:
 
 **Avoid:**
 - Writing tests without reading the code being tested
-- Testing implementation details (internal state, private functions)
+- Testing implementation details (internal state, private functions), except the shared-workflow tests described under "Exception: shared workflows"
 - Making tests depend on each other
 - Hardcoded values without explanation
 - Skipping error case testing
@@ -216,7 +226,7 @@ When writing a new test:
 - [ ] Test name clearly describes what's being validated
 - [ ] Includes happy path AND error cases
 - [ ] Creates own data, cleans up after
-- [ ] Validates behavior, not implementation
+- [ ] Validates behavior, not implementation (except the shared-workflow tests; see "Exception: shared workflows")
 - [ ] Clear assertions with helpful error messages
 - [ ] Comments document the contract being validated
 - [ ] Added to appropriate Make target
