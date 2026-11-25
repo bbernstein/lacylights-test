@@ -77,6 +77,11 @@ esac
 if [ -n "$accept" ] && [ "$key" != compare_diff ]; then
   refuse "unexpected header $accept for $endpoint"
 fi
+# Real gh would run --jq on the diff text, which is not JSON, and fail. Checked before FAKE_GH_FAIL so
+# it is refused even in cases that make the diff call fail.
+if [ "$key" = compare_diff ] && [ -n "$filter" ]; then
+  refuse "--jq on the diff call"
+fi
 
 case ",${FAKE_GH_FAIL:-}," in
   *",$key,"*) echo '{"message":"Server Error","status":"500"}'; exit 1 ;;
@@ -84,8 +89,6 @@ esac
 
 case "$key" in compare_total|compare_files) body_key=compare ;; *) body_key=$key ;; esac
 if [ "$key" = compare_diff ]; then
-  # Real gh would run --jq on the diff text, which is not JSON, and fail.
-  [ -z "$filter" ] || refuse "--jq on the diff call"
   cat "$dir/compare.diff"
   exit 0
 fi

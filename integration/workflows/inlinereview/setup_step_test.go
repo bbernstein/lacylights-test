@@ -1604,21 +1604,25 @@ func TestFakeGHRefuses(t *testing.T) {
 	cases := []struct {
 		name string
 		args []string
+		env  []string // extra environment, e.g. an injected failure
 	}{
-		{"wrong repo", []string{"api", "repos/other/repo/pulls/" + testPR}},
-		{"wrong PR", []string{"api", base + "/pulls/1"}},
-		{"extra path segment", []string{"api", base + "/pulls/" + testPR + "/reviews"}},
-		{"two-dot range", []string{"api", base + "/compare/main.." + reviewSHA}},
-		{"other head", []string{"api", base + "/compare/main..." + newerSHA}},
-		{"unknown flag", []string{"api", "--method", "POST", good}},
-		{"stray header", []string{"api", base + "/pulls/" + testPR, "-H", "Accept: application/vnd.github.diff"}},
-		{"second header", []string{"api", good, "-H", "Accept: application/vnd.github.diff", "-H", "X-Other: 1"}},
-		{"second endpoint", []string{"api", good, base + "/pulls/1"}},
-		{"jq without filter", []string{"api", good, "--jq"}},
-		{"jq on the diff", []string{"api", good, "-H", "Accept: application/vnd.github.diff", "--jq", "."}},
-		{"paginate on the total", []string{"api", "--paginate", good + "?per_page=1", "--jq", ".total_commits"}},
-		{"paginate on pulls/N", []string{"api", "--paginate", base + "/pulls/" + testPR}},
-		{"not api", []string{"pr", "view"}},
+		{"wrong repo", []string{"api", "repos/other/repo/pulls/" + testPR}, nil},
+		{"wrong PR", []string{"api", base + "/pulls/1"}, nil},
+		{"extra path segment", []string{"api", base + "/pulls/" + testPR + "/reviews"}, nil},
+		{"two-dot range", []string{"api", base + "/compare/main.." + reviewSHA}, nil},
+		{"other head", []string{"api", base + "/compare/main..." + newerSHA}, nil},
+		{"unknown flag", []string{"api", "--method", "POST", good}, nil},
+		{"stray header", []string{"api", base + "/pulls/" + testPR, "-H", "Accept: application/vnd.github.diff"}, nil},
+		{"second header", []string{"api", good, "-H", "Accept: application/vnd.github.diff", "-H", "X-Other: 1"}, nil},
+		{"second endpoint", []string{"api", good, base + "/pulls/1"}, nil},
+		{"jq without filter", []string{"api", good, "--jq"}, nil},
+		{"jq on the diff", []string{"api", good, "-H", "Accept: application/vnd.github.diff", "--jq", "."}, nil},
+		// Refused before any injected failure, so cases that fail the diff call still catch it.
+		{"jq on a failing diff", []string{"api", good, "-H", "Accept: application/vnd.github.diff", "--jq", "."},
+			[]string{"FAKE_GH_FAIL=compare_diff"}},
+		{"paginate on the total", []string{"api", "--paginate", good + "?per_page=1", "--jq", ".total_commits"}, nil},
+		{"paginate on pulls/N", []string{"api", "--paginate", base + "/pulls/" + testPR}, nil},
+		{"not api", []string{"pr", "view"}, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1627,6 +1631,7 @@ func TestFakeGHRefuses(t *testing.T) {
 			cmd.Args = append(cmd.Args, tc.args...)
 			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "FAKE_GH_DIR=" + dir, "REPO=" + testRepo, "PR=" + testPR,
 				"BASE_REF=main", "HEAD_SHA=" + reviewSHA}
+			cmd.Env = append(cmd.Env, tc.env...)
 			if err := cmd.Run(); err == nil {
 				t.Errorf("fake gh accepted %q; it must refuse", tc.args)
 			}
@@ -1637,42 +1642,30 @@ func TestFakeGHRefuses(t *testing.T) {
 	}
 }
 
-// gh prints a null --jq result as an empty line; the fake must do the same, or the tests would see the
-// text "null" where the runner sees "".
-func TestFakeGHNullIsEmpty(t *testing.T) {
+// The fake must print --jq results the way real gh does: a null result as an empty line (not the text
+// "null"), and a filter whose last line ends in a jq "#" comment must still work.
+func TestFakeGHOutput(t *testing.T) {
 	requireTools(t, "bash", "jq")
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "pull.json"), []byte(`{"head":{"sha":null},"title":"x"}`), 0o600); err != nil {
-		t.Fatal(err)
+	cases := []struct{ name, pullJSON, filter, want string }{
+		{"null is an empty line", `{"head":{"sha":null},"title":"x"}`, ".head.sha", "\n"},
+		{"trailing jq comment", `{"head":{"sha":"abc"},"title":"x"}`, ".title # the PR title", "x\n"},
 	}
-	cmd := exec.Command("bash", "fakegh.sh", "api", "repos/"+testRepo+"/pulls/"+testPR, "--jq", ".head.sha")
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "FAKE_GH_DIR=" + dir, "REPO=" + testRepo, "PR=" + testPR,
-		"BASE_REF=main", "HEAD_SHA=" + reviewSHA}
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("fake gh failed: %v", err)
-	}
-	if string(out) != "\n" {
-		t.Errorf("a null --jq result must print an empty line, got %q", out)
-	}
-}
-
-// A --jq filter whose last line ends in a jq "#" comment is valid for real gh; the fake must not break it
-// by appending its null handling to that commented-out line.
-func TestFakeGHFilterTrailingComment(t *testing.T) {
-	requireTools(t, "bash", "jq")
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "pull.json"), []byte(`{"head":{"sha":"abc"},"title":"x"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cmd := exec.Command("bash", "fakegh.sh", "api", "repos/"+testRepo+"/pulls/"+testPR, "--jq", ".title # the PR title")
-	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "FAKE_GH_DIR=" + dir, "REPO=" + testRepo, "PR=" + testPR,
-		"BASE_REF=main", "HEAD_SHA=" + reviewSHA}
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatalf("fake gh failed on a filter with a trailing comment: %v", err)
-	}
-	if string(out) != "x\n" {
-		t.Errorf("want %q, got %q", "x\n", out)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "pull.json"), []byte(tc.pullJSON), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", "fakegh.sh", "api", "repos/"+testRepo+"/pulls/"+testPR, "--jq", tc.filter)
+			cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "FAKE_GH_DIR=" + dir, "REPO=" + testRepo, "PR=" + testPR,
+				"BASE_REF=main", "HEAD_SHA=" + reviewSHA}
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("fake gh failed: %v", err)
+			}
+			if string(out) != tc.want {
+				t.Errorf("want %q, got %q", tc.want, out)
+			}
+		})
 	}
 }
