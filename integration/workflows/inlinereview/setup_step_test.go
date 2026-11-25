@@ -1230,7 +1230,11 @@ func TestWorkflowIdenticalAcrossRepos(t *testing.T) {
 		dir := filepath.Join(root, repo)
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 			if !viaWorktree[repo] { // already compared through one of its worktrees
-				notChecked = append(notChecked, repo+" (not checked out)")
+				why := "not checked out"
+				if _, err := os.Stat(dir); err == nil {
+					why = "not a git checkout" // the directory exists but has no .git
+				}
+				notChecked = append(notChecked, repo+" ("+why+")")
 			}
 			continue
 		}
