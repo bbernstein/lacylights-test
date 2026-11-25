@@ -84,6 +84,8 @@ esac
 
 case "$key" in compare_total|compare_files) body_key=compare ;; *) body_key=$key ;; esac
 if [ "$key" = compare_diff ]; then
+  # Real gh would run --jq on the diff text, which is not JSON, and fail.
+  [ -z "$filter" ] || refuse "--jq on the diff call"
   cat "$dir/compare.diff"
   exit 0
 fi
@@ -112,8 +114,10 @@ if [ -n "$filter" ]; then
   # gojq, so use gojq when it is installed. With plain jq, a jq-only builtin could pass here but fail on
   # the runner.
   if command -v gojq >/dev/null 2>&1; then jqbin=gojq; else jqbin=jq; fi
-  # gh prints a null result as an empty line, not the text "null".
-  "$jqbin" -r -c "($filter) | if . == null then \"\" else . end" <<< "$body"
+  # gh prints a null result as an empty line, not the text "null". The closing paren goes on its own
+  # line, so a jq "#" comment on the filter's last line can't swallow it.
+  "$jqbin" -r -c "($filter
+) | if . == null then \"\" else . end" <<< "$body"
 else
   printf '%s\n' "$body"
 fi

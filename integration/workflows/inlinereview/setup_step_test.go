@@ -334,6 +334,8 @@ func assertClean(t *testing.T, r result) {
 	t.Helper()
 	for name, body := range map[string]string{"pr-meta.md": r.meta, "pr.diff": r.diff, "prior-comments.md": r.prior} {
 		mustNotContain(t, name, body, `"message"`, `"status"`)
+		// The reviewer can Read ./**, so the GitHub token must never reach its files.
+		mustNotContain(t, name, body, "fake-token")
 	}
 	// Shell and tool errors the step can survive under bash -e (inside $(...), after ||, or in
 	// arithmetic), plus the fake gh's own refusals.
@@ -1280,8 +1282,8 @@ func TestReviewerSandbox(t *testing.T) {
 	// (for example ANTHROPIC_BASE_URL would redirect the reviewer).
 	// A GitHub-hosted, fresh runner with no sidecars: a self-hosted runner would keep the token and the
 	// PR checkout on a persistent machine. timeout-minutes is pinned because it bounds how long the job
-	// that holds the Claude token can run. 45 was chosen with --max-turns 150 (ledger R7); change both
-	// together and update this test.
+	// that holds the Claude token can run. 45 was chosen together with --max-turns 150, so a
+	// medium-sized PR can use all its turns before the timeout; change both together and update this test.
 	if job.RunsOn != "ubuntu-latest" || job.Services != nil || job.ContinueOnError != nil || job.Strategy != nil ||
 		job.TimeoutMinutes != 45 {
 		t.Errorf("job must run on ubuntu-latest with timeout-minutes 45 and no services, strategy or "+
@@ -1613,6 +1615,7 @@ func TestFakeGHRefuses(t *testing.T) {
 		{"second header", []string{"api", good, "-H", "Accept: application/vnd.github.diff", "-H", "X-Other: 1"}},
 		{"second endpoint", []string{"api", good, base + "/pulls/1"}},
 		{"jq without filter", []string{"api", good, "--jq"}},
+		{"jq on the diff", []string{"api", good, "-H", "Accept: application/vnd.github.diff", "--jq", "."}},
 		{"paginate on the total", []string{"api", "--paginate", good + "?per_page=1", "--jq", ".total_commits"}},
 		{"paginate on pulls/N", []string{"api", "--paginate", base + "/pulls/" + testPR}},
 		{"not api", []string{"pr", "view"}},
@@ -1651,5 +1654,25 @@ func TestFakeGHNullIsEmpty(t *testing.T) {
 	}
 	if string(out) != "\n" {
 		t.Errorf("a null --jq result must print an empty line, got %q", out)
+	}
+}
+
+// A --jq filter whose last line ends in a jq "#" comment is valid for real gh; the fake must not break it
+// by appending its null handling to that commented-out line.
+func TestFakeGHFilterTrailingComment(t *testing.T) {
+	requireTools(t, "bash", "jq")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pull.json"), []byte(`{"head":{"sha":"abc"},"title":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", "fakegh.sh", "api", "repos/"+testRepo+"/pulls/"+testPR, "--jq", ".title # the PR title")
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "FAKE_GH_DIR=" + dir, "REPO=" + testRepo, "PR=" + testPR,
+		"BASE_REF=main", "HEAD_SHA=" + reviewSHA}
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("fake gh failed on a filter with a trailing comment: %v", err)
+	}
+	if string(out) != "x\n" {
+		t.Errorf("want %q, got %q", "x\n", out)
 	}
 }

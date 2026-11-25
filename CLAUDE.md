@@ -27,7 +27,7 @@ make test-settings       # Run settings contract tests
 make test-dataexport     # Run CSV/XLSX data export contract tests
 make test-integration    # Run integration tests
 make test-workflows      # Test the shared claude-inline-review workflow (no server)
-make check-workflow-drift # Local: every sibling repo's copy of it is identical (fetch first)
+make check-workflow-drift # Local: known checked-out repos' copies match (fetch first)
 make test-distribution   # Run S3 distribution tests
 ```
 
